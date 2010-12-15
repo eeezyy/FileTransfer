@@ -17,3 +17,5 @@ ${PROGRAM_CLIENT}: ${PROGRAM_CLIENT}.o
 
 ${PROGRAM_CLIENT}.o: ${PROGRAM_CLIENT}.c
 	gcc ${CFLAGS} -c ${PROGRAM_CLIENT}.c
+	
+	# gcc -Wall -lldap -o ldap ldap.c -DLDAP_DEPRECATED
