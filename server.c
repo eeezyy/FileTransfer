@@ -9,6 +9,7 @@
 #include <string.h>
 #include <dirent.h>
 #include <pthread.h>
+#include <sys/stat.h>
 
 #define BUF 1024
 #define MAXAMOUNT 20
