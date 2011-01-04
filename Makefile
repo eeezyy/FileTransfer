@@ -1,6 +1,6 @@
 # Makefile for 'ftp-server/client'
 VERSION=1.0.0
-CFLAGS=-g -Wall -O
+CFLAGS=-g -lpthread -Wall -O
 PROGRAM_SERVER=server
 PROGRAM_CLIENT=client
 
