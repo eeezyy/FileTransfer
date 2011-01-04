@@ -20,7 +20,7 @@ int size, check = 0;
 long port;
 
 if( argc < 2 ) {
-     printf("Usage: %s IP-Adresse Port-Nummer\n", argv[0]);
+     fprintf(stderr, "Usage: %s IP-Adresse Port-Nummer\n", argv[0]);
      exit(EXIT_FAILURE);
 }
 
