@@ -10,6 +10,7 @@
 #include <dirent.h>
 #include <pthread.h>
 #include <sys/stat.h>
+#include <errno.h>
 
 #define BUF 2048
 #define MAXAMOUNT 20
@@ -23,8 +24,9 @@ char dirname[1024];
 // globale Funktionen
 //++++++++++++++++++++
 void *session(void *arg);
-void list(char* dir, int cFd);
-FILE* getFile(char*, int);
+void list(char* dir, int connFd);
+void sendFile(char*, int);
+ssize_t writen (int fd, const void *vptr, size_t n);
 
 /*
 struct thrdData {
@@ -102,18 +104,18 @@ while(index < MAXAMOUNT){
 void *session(void *arg)
 {
 //	struct thrdData* init =(struct thrdData* )(arg);
-	int cFd = *((int *)arg);
+	int connFd = *((int *)arg);
 	char sendBuffer[BUF];
 	char receiveBuffer[BUF];
 	int size;
 	
 	pthread_detach(pthread_self());
-	printf("Thread gestartet : %d\n", cFd);
+	printf("Thread gestartet : %d\n", connFd);
 	strcpy(sendBuffer,"Welcome to myserver, Please enter your command:\n");
-	send(cFd, sendBuffer, strlen(sendBuffer),0);
+	send(connFd, sendBuffer, strlen(sendBuffer),0);
 	
 	while(strncmp(receiveBuffer, "quit", 4) != 0) {
-		size = recv(cFd, receiveBuffer, BUF-1, 0);
+		size = recv(connFd, receiveBuffer, BUF-1, 0);
 
 		if(size > 0) {
 			receiveBuffer[size] = '\0';
@@ -121,24 +123,18 @@ void *session(void *arg)
 					
 			if (strncmp(receiveBuffer, "list", 4) == 0) {
 				//strcpy(sendBuffer,"List wurde eingegeben\n");
-				//send(cFd, sendBuffer, strlen(sendBuffer),0);
-				list(dirname, cFd);
+				//send(connFd, sendBuffer, strlen(sendBuffer),0);
+				list(dirname, connFd);
 				//dir = opendir(dirname);
 				
 			} 
 			else if (strncmp(receiveBuffer, "get", 3) == 0) {
-				char file[1024] = "";
 				char *token;
 				token = strtok(receiveBuffer, " ");
 				token = strtok(NULL, "\n");
 				if(token[strlen(token)-1]==13) 
 					token[strlen(token)-1]='\0';
-				strcat(file, dirname);
-				strcat(file, "/");
-				strcat(file, token);
-				getFile(file, cFd);
-				
-				
+				sendFile(token, connFd);
 			}
 			else {
 				strcpy(sendBuffer,"");
@@ -154,13 +150,12 @@ void *session(void *arg)
 		}
 	}
 	
-	close(cFd);
+	close(connFd);
 	return NULL;
 }
 
-void list(char *directory, int cFd)
+void list(char *directory, int connFd)
 {
-	fprintf(stdout, "Fkt gestartet\n");
 	struct dirent* dirzeiger = NULL;
 	char buffer[BUF];
 	DIR *dir;
@@ -169,41 +164,47 @@ void list(char *directory, int cFd)
 	while((dirzeiger = readdir(dir))) {
 		count++;
 	}
-	fprintf(stdout, "Counter wurde berechnet\n");
 	sprintf(buffer, "%d", count);
-	send(cFd, buffer, strlen(buffer), 0);
+	send(connFd, buffer, strlen(buffer), 0);
 	closedir(dir);
-	fprintf(stdout, "Closed dir\n");
 	dir = opendir(dirname);
 	while((dirzeiger = readdir(dir))) {
 		strcpy(buffer, dirzeiger->d_name);
 		strcat(buffer, "\n");
-		send(cFd, buffer, strlen(buffer), 0);
+		send(connFd, buffer, strlen(buffer), 0);
 	}
 	closedir(dir);
 	//fflush(stdout);
 }
 
-FILE* getFile(char* f, int cFd)
+void sendFile(char* f, int connFd)
 {
+	char file[1024] = "";
 	struct stat attribut;
 	unsigned long sizeOfFile = 0;
 	char choice[1];
 	char sendBuffer[BUF];
 	
-	if(stat(f, &attribut) == -1)
+	strcat(file, dirname);
+	strcat(file, "/");
+	strcat(file, f);
+	
+	if(stat(file, &attribut) == -1)
 	{
+		sprintf(sendBuffer, "%d", -1);
+		send(connFd, sendBuffer, strlen(sendBuffer), 0);
 		strcpy(sendBuffer, "Fehler bei stat\n");
-		send(cFd, sendBuffer, strlen(sendBuffer), 0);
-		return NULL;
+		send(connFd, sendBuffer, strlen(sendBuffer), 0);
 	}
 	else 
 	{
+		sprintf(sendBuffer, "%ld", sizeOfFile);
+		writen(connFd, sendBuffer, BUF-1);
 		sizeOfFile = attribut.st_size;
-		fprintf(stdout, "Size of selected File %s is %ld bytes\n", f,sizeOfFile );
+		sprintf(sendBuffer, "Size of selected File %s is %ld bytes\nDo you want to download the file? (y/n)", f,sizeOfFile );
+		writen(connFd, sendBuffer, BUF-1);
 	}
 	
-	fprintf(stdout, "Do you want to download the file %s? (y/n)", f);
 	fgets(choice, 1, stdin);
 	switch(choice[0])
 	{
@@ -214,5 +215,25 @@ FILE* getFile(char* f, int cFd)
 		case 'n': 	fprintf(stdout, "that's bad.\n");
 					break;
 	}
-	return NULL;
 }
+
+// write n bytes to a descriptor ...
+ssize_t writen (int fd, const void *vptr, size_t n)
+{
+size_t nleft ;
+ssize_t nwritten ;
+const char *ptr ;
+ptr = vptr ;
+nleft = n ;
+while (nleft > 0) {
+if ( (nwritten = write(fd,ptr,nleft)) <= 0) {
+if (errno == EINTR)
+nwritten = 0 ; // and call write() again
+else
+return (-1) ;
+}
+nleft -= nwritten ;
+ptr += nwritten ;
+} ;
+return (n) ;
+} ;

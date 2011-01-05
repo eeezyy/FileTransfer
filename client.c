@@ -55,37 +55,31 @@ else {
 }
 
 while(strncmp(buffer, "quit", 4) != 0) { 
-	
-	printf("Send command: ");
-	fgets(buffer, BUF, stdin);
-	
-	if((strncmp(buffer, "list", 4) != 0) && (strncmp(buffer, "get", 3) != 0) && (strncmp(buffer, "quit", 4) != 0)) {
-		printf("passt nicht\n");
-		while(1) {
-			printf("Send correct command (quit, get, list): ");
-			fgets(buffer, BUF, stdin);
-			
-			if(strncmp(buffer, "list", 4) == 0) {
-				break;
-			}
-
-			if(strncmp(buffer, "get", 3) == 0) {
-				break;
-			}
-			
-			if(strncmp(buffer, "quit", 4) == 0) {
-				break;
-			}
+	int status = -1;
+	do {
+		printf("Send command: ");
+		fgets(buffer, BUF-1, stdin);
+		
+		if(strncmp(buffer, "list", 4) == 0) {
+			status = 1;
+		} else if(strncmp(buffer, "get", 3) == 0) {
+			status = 2;
+		} else if(strncmp(buffer, "quit", 4) == 0) {
+			status = 0;
+		} else {
+			status = -1;
 		}
-	}
-		send(sockFd, buffer, strlen(buffer), 0);
-		//fcntl(sockFd, F_SETFL, O_NONBLOCK);
-		size=recv(sockFd,buffer,BUF-1, 0);
-		long packages;
-		packages = strtol(buffer, NULL, 10);
+	} while(status == -1);
+	
+	send(sockFd, buffer, strlen(buffer), 0);
+	//fcntl(sockFd, F_SETFL, O_NONBLOCK);
+	size=recv(sockFd,buffer,BUF-1, 0);
+	long packages;
+	packages = strtol(buffer, NULL, 10);
+	// list
+	if (status == 1) {
 		int i;
 		for (i=0; i < packages; i++) {
-			//size=recv(sockFd,buffer,BUF-1, 0);
 			size=readline(sockFd, buffer, BUF-1);
 			if((size) > 0) {
 				buffer[size]= '\0';
@@ -93,6 +87,30 @@ while(strncmp(buffer, "quit", 4) != 0) {
 				//continue;
 			}
 		}
+	}
+	// get
+	else if (status == 2) {
+		int isConfirmed = -1;
+		size=recv(sockFd, buffer, BUF-1, 0);
+		printf("%s ", buffer);
+		do {
+			fgets(buffer, BUF-1, stdin);
+			if (strncmp(buffer, "y", 1) == 0) {
+				send(sockFd, "y", BUF-1, 0);
+				isConfirmed = 1;
+			} else if (strncmp(buffer, "n", 1) == 0) {
+				send(sockFd, "n", BUF-1, 0);
+				isConfirmed = 0;
+			} else {
+				isConfirmed = -1;
+				printf("Keine gültige Eingabe. (y/n) ");
+			}
+		} while(isConfirmed == -1);
+		if(isConfirmed) {
+			// get File
+			printf("get file...\n");
+		}
+	}
 }
  
   close(sockFd);
