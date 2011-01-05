@@ -11,7 +11,7 @@
 #include <pthread.h>
 #include <sys/stat.h>
 
-#define BUF 1024
+#define BUF 2048
 #define MAXAMOUNT 20
 
 //++++++++++++++++++++
@@ -23,7 +23,8 @@ char dirname[1024];
 // globale Funktionen
 //++++++++++++++++++++
 void *session(void *arg);
-void list(DIR* dir);
+void list(char* dir, int cFd);
+FILE* getFile(char*, int);
 
 /*
 struct thrdData {
@@ -119,12 +120,24 @@ void *session(void *arg)
 			printf("Message received: %s\n", receiveBuffer);	
 					
 			if (strncmp(receiveBuffer, "list", 4) == 0) {
-				strcpy(sendBuffer,"List wurde eingegeben\n");
-				send(cFd, sendBuffer, strlen(sendBuffer),0);
-				DIR *dir;
-				dir = opendir(dirname);
-				list(dir);
+				//strcpy(sendBuffer,"List wurde eingegeben\n");
+				//send(cFd, sendBuffer, strlen(sendBuffer),0);
+				list(dirname, cFd);
 				//dir = opendir(dirname);
+				
+			} 
+			else if (strncmp(receiveBuffer, "get", 3) == 0) {
+				char file[1024] = "";
+				char *token;
+				token = strtok(receiveBuffer, " ");
+				token = strtok(NULL, "\n");
+				if(token[strlen(token)-1]==13) 
+					token[strlen(token)-1]='\0';
+				strcat(file, dirname);
+				strcat(file, "/");
+				strcat(file, token);
+				getFile(file, cFd);
+				
 				
 			}
 			else {
@@ -145,11 +158,61 @@ void *session(void *arg)
 	return NULL;
 }
 
-void list(DIR *dir)
+void list(char *directory, int cFd)
 {
+	fprintf(stdout, "Fkt gestartet\n");
 	struct dirent* dirzeiger = NULL;
+	char buffer[BUF];
+	DIR *dir;
+	dir = opendir(dirname);
+	int count = 0;
 	while((dirzeiger = readdir(dir))) {
-		printf("%s\n", dirzeiger->d_name);
+		count++;
 	}
-	fflush(stdout);
+	fprintf(stdout, "Counter wurde berechnet\n");
+	sprintf(buffer, "%d", count);
+	send(cFd, buffer, strlen(buffer), 0);
+	closedir(dir);
+	fprintf(stdout, "Closed dir\n");
+	dir = opendir(dirname);
+	while((dirzeiger = readdir(dir))) {
+		strcpy(buffer, dirzeiger->d_name);
+		strcat(buffer, "\n");
+		send(cFd, buffer, strlen(buffer), 0);
+	}
+	closedir(dir);
+	//fflush(stdout);
+}
+
+FILE* getFile(char* f, int cFd)
+{
+	struct stat attribut;
+	unsigned long sizeOfFile = 0;
+	char choice[1];
+	char sendBuffer[BUF];
+	
+	if(stat(f, &attribut) == -1)
+	{
+		strcpy(sendBuffer, "Fehler bei stat\n");
+		send(cFd, sendBuffer, strlen(sendBuffer), 0);
+		return NULL;
+	}
+	else 
+	{
+		sizeOfFile = attribut.st_size;
+		fprintf(stdout, "Size of selected File %s is %ld bytes\n", f,sizeOfFile );
+	}
+	
+	fprintf(stdout, "Do you want to download the file %s? (y/n)", f);
+	fgets(choice, 1, stdin);
+	switch(choice[0])
+	{
+		case 'y':
+					fprintf(stdout, "eat this.\n");
+					break;
+					
+		case 'n': 	fprintf(stdout, "that's bad.\n");
+					break;
+	}
+	return NULL;
 }

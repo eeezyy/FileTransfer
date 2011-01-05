@@ -8,15 +8,19 @@
 #include <stdio.h>
 #include <string.h>
 #include <fcntl.h>
+#include <errno.h> 
  
-#define BUF 1024
+#define BUF 2048
+ssize_t readline (int fd, void *vptr, size_t maxlen);
+static ssize_t my_read (int fd, char *ptr);
+
 
 int main(int argc, char **argv) {
 
 int sockFd;
 char buffer[BUF];
 struct sockaddr_in address;
-int size, check = 0;
+int size;
 long port;
 
 if( argc < 2 ) {
@@ -57,38 +61,83 @@ while(strncmp(buffer, "quit", 4) != 0) {
 	
 	if((strncmp(buffer, "list", 4) != 0) && (strncmp(buffer, "get", 3) != 0) && (strncmp(buffer, "quit", 4) != 0)) {
 		printf("passt nicht\n");
-		while(check == 0) {
+		while(1) {
 			printf("Send correct command (quit, get, list): ");
 			fgets(buffer, BUF, stdin);
 			
 			if(strncmp(buffer, "list", 4) == 0) {
-				check = 1;
 				break;
 			}
 
 			if(strncmp(buffer, "get", 3) == 0) {
-				check = 1;
 				break;
 			}
 			
 			if(strncmp(buffer, "quit", 4) == 0) {
-				check = 1;
 				break;
 			}
 		}
-		check = 0;
 	}
 		send(sockFd, buffer, strlen(buffer), 0);
-		fcntl(sockFd, F_SETFL);
+		//fcntl(sockFd, F_SETFL, O_NONBLOCK);
 		size=recv(sockFd,buffer,BUF-1, 0);
-
-		if((size) > 0) {
-			buffer[size]= '\0';
-			printf("%s",buffer);
-			//continue;
+		long packages;
+		packages = strtol(buffer, NULL, 10);
+		int i;
+		for (i=0; i < packages; i++) {
+			//size=recv(sockFd,buffer,BUF-1, 0);
+			size=readline(sockFd, buffer, BUF-1);
+			if((size) > 0) {
+				buffer[size]= '\0';
+				printf("%s",buffer);
+				//continue;
+			}
 		}
 }
  
   close(sockFd);
   return EXIT_SUCCESS;
+}
+
+
+static ssize_t
+my_read (int fd, char *ptr)
+{
+static int read_cnt = 0 ;
+static char *read_ptr ;
+static char read_buf[BUF] ;
+if (read_cnt <= 0) {
+again:
+if ( (read_cnt = read(fd,read_buf,sizeof(read_buf))) < 0) {
+if (errno == EINTR)
+goto again ;
+return (-1) ;
+} else if (read_cnt == 0)
+return (0) ;
+read_ptr = read_buf ;
+} ;
+read_cnt-- ;
+*ptr = *read_ptr++ ;
+return (1) ;
+}
+ssize_t readline (int fd, void *vptr, size_t maxlen)
+{
+ssize_t n, rc ;
+char c, *ptr ;
+ptr = vptr ;
+for (n = 1 ; n < maxlen ; n++) {
+if ( (rc = my_read(fd,&c)) == 1 ) {
+*ptr++ = c ;
+if (c == '\n')
+break ; // newline is stored
+} else if (rc == 0) {
+if (n == 1)
+return (0) ; // EOF, no data read
+else
+break ; // EOF, some data was read
+} else
+return (-1) ; // error, errno set by read() in my_read()
+} ;
+*ptr = 0 ; // null terminate
+return (n) ;
 }
