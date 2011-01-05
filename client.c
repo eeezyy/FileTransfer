@@ -13,7 +13,7 @@
 
 int main(int argc, char **argv) {
 
-int create_socket;
+int sockFd;
 char buffer[BUF];
 struct sockaddr_in address;
 int size, check = 0;
@@ -24,7 +24,7 @@ if( argc < 2 ) {
      exit(EXIT_FAILURE);
 }
 
-if((create_socket = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
+if((sockFd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
      perror("Socket error");
      return EXIT_FAILURE;
 }
@@ -36,9 +36,9 @@ if((create_socket = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
   address.sin_port = htons(port);
   inet_aton(argv[1], &address.sin_addr);
 
-if(connect( create_socket,(struct sockaddr *) &address, sizeof(address)) == 0) {
+if(connect( sockFd,(struct sockaddr *) &address, sizeof(address)) == 0) {
      printf("Connection with server(%s) established\n", inet_ntoa(address.sin_addr));
-     size=recv(create_socket,buffer,BUF-1, 0);
+     size=recv(sockFd,buffer,BUF-1, 0);
      
      if(size > 0) {
         buffer[size]= '\0';
@@ -78,8 +78,9 @@ while(strncmp(buffer, "quit", 4) != 0) {
 		}
 		check = 0;
 	}
-		send(create_socket, buffer, strlen(buffer), 0);
-		size=recv(create_socket,buffer,BUF-1, 0);
+		send(sockFd, buffer, strlen(buffer), 0);
+		fcntl(sockFd, F_SETFL);
+		size=recv(sockFd,buffer,BUF-1, 0);
 
 		if((size) > 0) {
 			buffer[size]= '\0';
@@ -88,6 +89,6 @@ while(strncmp(buffer, "quit", 4) != 0) {
 		}
 }
  
-  close(create_socket);
+  close(sockFd);
   return EXIT_SUCCESS;
 }
