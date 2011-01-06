@@ -128,7 +128,7 @@ my_read (int fd, char *ptr)
 		again:
 		if ( (read_cnt = read(fd,read_buf,sizeof(read_buf))) < 0) {
 			if (errno == EINTR)
-				goto agan ;
+				goto again ;
 			return (-1) ;
 		} else if (read_cnt == 0)
 			return (0) ;
