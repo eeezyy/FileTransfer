@@ -127,18 +127,31 @@ int main(int argc, char **argv) {
 				// get File
 				int leftBytes;
 				FILE *file = NULL;
-				char dirfile[1024] = "/var/www/vhosts/alexander.kumbeiz.de/private/";
-				printf("filename: %s\n",fn);
+				char dirfile[1024] = "./";
 				strcat(dirfile, fn);
-				printf("dirname: %s\n",dirfile);
 				file = fopen(dirfile, "wb");
+				int progress = 0;
+				int percent = 0;
 				for(leftBytes = packages; leftBytes >= 0; leftBytes -= (BUF-1)) {
 					int newBUF = BUF-1;
 					char tempBuffer[BUF] = "";
 					if(leftBytes < (BUF-1)) {
 						newBUF = leftBytes % (BUF-1);
 					}
-					printf("for size: %ld left: %i\n", packages, leftBytes);
+					percent = (double)(packages-leftBytes+newBUF)/(double)packages*20;
+					int temp = percent-progress;
+					if(temp >= 0) {
+						//printf("percent: %i progress: %i diff: %i\n", percent, progress, temp);
+						int i;
+						for(i = 0; i < temp; i++) {
+							printf("#");
+							fflush(stdout);
+							progress++;
+						}
+						if(progress == 20) {
+							printf("!\n");
+						}
+					}
 					recv(sockFd, tempBuffer, newBUF, 0);
 					fwrite(tempBuffer, 1, newBUF, file);
 				}

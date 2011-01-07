@@ -77,7 +77,7 @@ if(bind( sockFd,(struct sockaddr *) &address, sizeof(address)) != 0) {
 listen(sockFd, 5);
 addrlen = sizeof(struct sockaddr_in);
 	
-while(index < MAXAMOUNT){
+while(1){
 	printf("Waiting for connections...\n");
 	connFd = accept( sockFd,(struct sockaddr *) &cliaddress, &addrlen );
 	if(connFd > 0) {
@@ -90,7 +90,7 @@ while(index < MAXAMOUNT){
 //		data->clientAddress = inet_ntoa(cliaddress.sin_addr);
 //		data->clientPort = ntohs(cliaddress.sin_port);
 		pthread_create(&socketThread[index],NULL,session,(void*)&connFd);
-		index++;
+		//index++;
  } 
  else {
 		printf("Fehler bei accept \n");
@@ -203,6 +203,10 @@ void sendFile(char* f, int connFd)
 		sizeOfFile = attribut.st_size;
 		sprintf(sendBuffer, "%ld", sizeOfFile);
 		writen(connFd, sendBuffer, BUF-1);
+		recv(connFd, sendBuffer, BUF-1, 0);
+		if(strncmp(sendBuffer,"y", 1) != 0) {
+			return;
+		}
 		file = fopen(filename, "rb");
 		if (file != NULL) {
 			int newBUF = BUF-1;
