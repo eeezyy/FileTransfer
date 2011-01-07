@@ -109,7 +109,7 @@ void *session(void *arg)
 	char receiveBuffer[BUF];
 	int size;
 	
-	pthread_detach(pthread_self());
+	//pthread_detach(pthread_self());
 	printf("Thread gestartet : %d\n", connFd);
 	strcpy(sendBuffer,"Welcome to myserver, Please enter your command:\n");
 	send(connFd, sendBuffer, strlen(sendBuffer),0);
@@ -120,7 +120,6 @@ void *session(void *arg)
 		if(size > 0) {
 			receiveBuffer[size] = '\0';
 			printf("Message received: %s\n", receiveBuffer);	
-					
 			if (strncmp(receiveBuffer, "list", 4) == 0) {
 				//strcpy(sendBuffer,"List wurde eingegeben\n");
 				//send(connFd, sendBuffer, strlen(sendBuffer),0);
@@ -135,6 +134,10 @@ void *session(void *arg)
 				if(token[strlen(token)-1]==13) 
 					token[strlen(token)-1]='\0';
 				sendFile(token, connFd);
+			}
+			else if(strncmp(receiveBuffer, "quit", 4) == 0) {
+				printf("Client closed remote socket\n");
+				break;
 			}
 			else {
 				strcpy(sendBuffer,"");
@@ -179,41 +182,43 @@ void list(char *directory, int connFd)
 
 void sendFile(char* f, int connFd)
 {
-	char file[1024] = "";
+	char filename[1024] = "";
 	struct stat attribut;
 	unsigned long sizeOfFile = 0;
-	char choice[1];
 	char sendBuffer[BUF];
+	FILE *file;
+	int leftBytes;
 	
-	strcat(file, dirname);
-	strcat(file, "/");
-	strcat(file, f);
+	strcat(filename, dirname);
+	strcat(filename, "/");
+	strcat(filename, f);
 	
-	if(stat(file, &attribut) == -1)
+	if(stat(filename, &attribut) == -1)
 	{
 		sprintf(sendBuffer, "%d", -1);
-		send(connFd, sendBuffer, strlen(sendBuffer), 0);
-		strcpy(sendBuffer, "Fehler bei stat\n");
 		send(connFd, sendBuffer, strlen(sendBuffer), 0);
 	}
 	else 
 	{
+		sizeOfFile = attribut.st_size;
 		sprintf(sendBuffer, "%ld", sizeOfFile);
 		writen(connFd, sendBuffer, BUF-1);
-		sizeOfFile = attribut.st_size;
-		sprintf(sendBuffer, "Size of selected File %s is %ld bytes\nDo you want to download the file? (y/n)", f,sizeOfFile );
-		writen(connFd, sendBuffer, BUF-1);
-	}
-	
-	fgets(choice, 1, stdin);
-	switch(choice[0])
-	{
-		case 'y':
-					fprintf(stdout, "eat this.\n");
-					break;
-					
-		case 'n': 	fprintf(stdout, "that's bad.\n");
-					break;
+		file = fopen(filename, "rb");
+		if (file != NULL) {
+			int newBUF = BUF-1;
+			char tempBuffer[BUF] = "";
+			int i = 0;
+			for(leftBytes = sizeOfFile; leftBytes >= 0; leftBytes -= (BUF-1)) {
+				if(leftBytes < (BUF-1)) {
+					newBUF = leftBytes % (BUF-1);
+				}
+				fread(tempBuffer, newBUF, 1, file);
+				send(connFd, tempBuffer, newBUF, 0);
+				printf("newBuf %i leftByte %i size %ld\n", newBUF, leftBytes, sizeOfFile);
+			}
+			i++;
+		}
+		fclose(file);
 	}
 }
 

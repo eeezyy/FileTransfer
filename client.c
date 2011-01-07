@@ -17,104 +17,137 @@ static ssize_t my_read (int fd, char *ptr);
 
 int main(int argc, char **argv) {
 
-int sockFd;
-char buffer[BUF];
-struct sockaddr_in address;
-int size;
-long port;
+	int sockFd;
+	char buffer[BUF];
+	struct sockaddr_in address;
+	int size;
+	long port;
+	char *filename = NULL;
+	char fn[1024];
 
-if( argc < 2 ) {
-     fprintf(stderr, "Usage: %s IP-Adresse Port-Nummer\n", argv[0]);
-     exit(EXIT_FAILURE);
-}
+	if( argc < 2 ) {
+		 fprintf(stderr, "Usage: %s IP-Adresse Port-Nummer\n", argv[0]);
+		 exit(EXIT_FAILURE);
+	}
 
-if((sockFd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
-     perror("Socket error");
-     return EXIT_FAILURE;
-}
+	if((sockFd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
+		 perror("Socket error");
+		 return EXIT_FAILURE;
+	}
   
-  port = strtol(argv[2], NULL, 10);
-  
-  memset(&address,0,sizeof(address));
-  address.sin_family = AF_INET;
-  address.sin_port = htons(port);
-  inet_aton(argv[1], &address.sin_addr);
+	port = strtol(argv[2], NULL, 10);
 
-if(connect( sockFd,(struct sockaddr *) &address, sizeof(address)) == 0) {
-     printf("Connection with server(%s) established\n", inet_ntoa(address.sin_addr));
-     size=recv(sockFd,buffer,BUF-1, 0);
-     
-     if(size > 0) {
-        buffer[size]= '\0';
-        printf("%s",buffer);
-     }
-} 
-else {
-     perror("Connect error - no server available");
-     return EXIT_FAILURE;
-}
+	memset(&address,0,sizeof(address));
+	address.sin_family = AF_INET;
+	address.sin_port = htons(port);
+	inet_aton(argv[1], &address.sin_addr);
 
-while(strncmp(buffer, "quit", 4) != 0) { 
+	if(connect( sockFd,(struct sockaddr *) &address, sizeof(address)) == 0) {
+		 printf("Connection with server(%s) established\n", inet_ntoa(address.sin_addr));
+		 size=recv(sockFd,buffer,BUF-1, 0);
+		 
+		 if(size > 0) {
+			buffer[size]= '\0';
+			printf("%s",buffer);
+		 }
+	} 
+	else {
+		 perror("Connect error - no server available");
+		 return EXIT_FAILURE;
+	}
+
 	int status = -1;
-	do {
-		printf("Send command: ");
-		fgets(buffer, BUF-1, stdin);
+	while(status != 0) {
 		
-		if(strncmp(buffer, "list", 4) == 0) {
-			status = 1;
-		} else if(strncmp(buffer, "get", 3) == 0) {
-			status = 2;
-		} else if(strncmp(buffer, "quit", 4) == 0) {
-			status = 0;
-		} else {
-			status = -1;
-		}
-	} while(status == -1);
-	
-	send(sockFd, buffer, strlen(buffer), 0);
-	//fcntl(sockFd, F_SETFL, O_NONBLOCK);
-	size=recv(sockFd,buffer,BUF-1, 0);
-	long packages;
-	packages = strtol(buffer, NULL, 10);
-	// list
-	if (status == 1) {
-		int i;
-		for (i=0; i < packages; i++) {
-			size=readline(sockFd, buffer, BUF-1);
-			if((size) > 0) {
-				buffer[size]= '\0';
-				printf("%s",buffer);
-				//continue;
-			}
-		}
-	}
-	// get
-	else if (status == 2) {
-		int isConfirmed = -1;
-		size=recv(sockFd, buffer, BUF-1, 0);
-		printf("%s ", buffer);
 		do {
+			printf("Send command: ");
 			fgets(buffer, BUF-1, stdin);
-			if (strncmp(buffer, "y", 1) == 0) {
-				send(sockFd, "y", BUF-1, 0);
-				isConfirmed = 1;
-			} else if (strncmp(buffer, "n", 1) == 0) {
-				send(sockFd, "n", BUF-1, 0);
-				isConfirmed = 0;
+			
+			if(strncmp(buffer, "list", 4) == 0) {
+				status = 1;
+			} else if(strncmp(buffer, "get", 3) == 0) {
+				status = 2;
+				char temp[BUF];
+				strcpy(temp, buffer);
+				filename = strtok(temp, " ");
+				filename = strtok(NULL, "\n");
+				if(filename[strlen(filename)-1]==13) 
+					filename[strlen(filename)-1]='\0';
+				strcpy(fn, filename);
+			} else if(strncmp(buffer, "quit", 4) == 0) {
+				status = 0;
 			} else {
-				isConfirmed = -1;
-				printf("Keine gültige Eingabe. (y/n) ");
+				status = -1;
 			}
-		} while(isConfirmed == -1);
-		if(isConfirmed) {
-			// get File
-			printf("get file...\n");
+		} while(status == -1);
+		
+		send(sockFd, buffer, strlen(buffer), 0);
+		//fcntl(sockFd, F_SETFL, O_NONBLOCK);
+		size=recv(sockFd,buffer,BUF-1, 0);
+		long packages;
+		packages = strtol(buffer, NULL, 10);
+		if (packages == -1) {
+			if (status == 2) {
+				printf("File not found!\n");
+			}
+			continue;
+		}
+		// list
+		if (status == 1) {
+			int i;
+			for (i=0; i < packages; i++) {
+				size=readline(sockFd, buffer, BUF-1);
+				if((size) > 0) {
+					buffer[size]= '\0';
+					printf("%s",buffer);
+					//continue;
+				}
+			}
+		}
+		// get
+		else if (status == 2) {
+			int isConfirmed = -1;
+			//size=recv(sockFd, buffer, BUF-1, 0);
+			//printf("%s ", buffer);
+			printf("Size of selected File is %ld bytes\nDo you want to download the file? (y/n)",packages );
+			do {
+				fgets(buffer, BUF-1, stdin);
+				if (strncmp(buffer, "y", 1) == 0) {
+					send(sockFd, "y", BUF-1, 0);
+					isConfirmed = 1;
+				} else if (strncmp(buffer, "n", 1) == 0) {
+					send(sockFd, "n", BUF-1, 0);
+					isConfirmed = 0;
+				} else {
+					isConfirmed = -1;
+					printf("Keine gültige Eingabe. (y/n) ");
+				}
+			} while(isConfirmed == -1);
+			if(isConfirmed) {
+				// get File
+				int leftBytes;
+				FILE *file = NULL;
+				char dirfile[1024] = "/var/www/vhosts/alexander.kumbeiz.de/private/";
+				printf("filename: %s\n",fn);
+				strcat(dirfile, fn);
+				printf("dirname: %s\n",dirfile);
+				file = fopen(dirfile, "wb");
+				for(leftBytes = packages; leftBytes >= 0; leftBytes -= (BUF-1)) {
+					int newBUF = BUF-1;
+					char tempBuffer[BUF] = "";
+					if(leftBytes < (BUF-1)) {
+						newBUF = leftBytes % (BUF-1);
+					}
+					printf("for size: %ld left: %i\n", packages, leftBytes);
+					recv(sockFd, tempBuffer, newBUF, 0);
+					fwrite(tempBuffer, 1, newBUF, file);
+				}
+			}
 		}
 	}
-}
- 
-  close(sockFd);
-  return EXIT_SUCCESS;
+
+	close(sockFd);
+	return EXIT_SUCCESS;
 }
 
 
