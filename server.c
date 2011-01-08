@@ -188,6 +188,17 @@ void sendFile(char* f, int connFd)
 	char sendBuffer[BUF];
 	FILE *file;
 	int leftBytes;
+	int iterations = 1;
+	int i;
+	
+	//parsing given filename => wildcards
+	for(i = 0; i < strlen(f); i++) {
+		if( f[i] == '*') {
+			//calling function which returns a matrix (array[#files][0])
+			printf("\nSchternsche g'funde!\n");
+			break;
+		}
+	}
 	
 	strcat(filename, dirname);
 	strcat(filename, "/");
@@ -200,6 +211,8 @@ void sendFile(char* f, int connFd)
 	}
 	else 
 	{
+		//for-loop for implementation of wildcards acceptance
+		for(i = 0; i < iterations; i++) {
 		sizeOfFile = attribut.st_size;
 		sprintf(sendBuffer, "%ld", sizeOfFile);
 		writen(connFd, sendBuffer, BUF-1);
@@ -223,6 +236,7 @@ void sendFile(char* f, int connFd)
 			i++;
 		}
 		fclose(file);
+		}
 	}
 }
 
