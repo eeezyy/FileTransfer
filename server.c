@@ -18,6 +18,8 @@
 #define MAXAMOUNT 20
 #define LDAP_HOST "ldap.technikum-wien.at"
 #define LDAP_PORT 389
+#define BLOCK_DURATION 60*30
+#define BLOCK_COUNT 3
 
 //++++++++++++++++++++
 // globale Variablen
@@ -32,6 +34,8 @@ void list(char* dir, int connFd);
 void sendFile(char*, int);
 int verify_user(char *bind_user, char *bind_pw);
 void addIgnoreEntry(char *username, char *ipAddress);
+int isBlockade(char *username, char *ipAddress);
+void cleanIgnoreList();
 //ssize_t writen (int fd, const void *vptr, size_t n);
 
 typedef struct ignoreList {
@@ -126,23 +130,36 @@ void *session(void *arg)
 	//pthread_detach(pthread_self());
 	printf("Thread gestartet : %d\n", connFd);
 	strcpy(sendBuffer,"Welcome to myserver, Please enter your command:\n");
-	send(connFd, sendBuffer, strlen(sendBuffer),0);
+	printf("serversend 1\n");
+	send(connFd, sendBuffer, BUF-1,0);
 	
 	// recv username
+	printf("serverrecv 1\n");
 	recv(connFd, receiveBuffer, BUF-1, 0);
 	strcpy(username, receiveBuffer);
 	// recv passwd
+	printf("serverrecv 2\n");
 	recv(connFd, receiveBuffer, BUF-1, 0);
 	strcpy(passwd, receiveBuffer);
 	if(verify_user(username, passwd) == 0) {
+		printf("serversend 2a\n");
 		send(connFd, "Username or password invalid\n", BUF-1, 0);
 		addIgnoreEntry(username, init->ipAddress);
 		close(connFd);
 		return NULL;
 	}
+	cleanIgnoreList();
+	if(isBlockade(username, init->ipAddress) == 1) {
+		printf("serversend 2b\n");
+		send(connFd, "User is blocked!\n", BUF-1, 0);
+		close(connFd);
+		return NULL;
+	}
+	printf("serversend 2c\n");
 	send(connFd, "Login successful!\n", BUF-1, 0);
-	
+	strcpy(receiveBuffer, "");
 	while(strncmp(receiveBuffer, "quit", 4) != 0) {
+	printf("serverrecv 3\n");
 		size = recv(connFd, receiveBuffer, BUF-1, 0);
 
 		if(size > 0) {
@@ -193,23 +210,34 @@ void list(char *directory, int connFd)
 	
 	dir = opendir(dirname);
 	int count = 0;
+	DIR *temp;
 	while((dirzeiger = readdir(dir))) {
-		if(opendir(dirzeiger->d_name) == NULL)
+		temp = opendir(dirzeiger->d_name);
+		if(temp == NULL)
 		{
 			count++;
+		} else {
+			closedir(temp);
 		}
 	}
 	printf("%i\n", count);
 	sprintf(buffer, "%d", count);
-	send(connFd, buffer, strlen(buffer), 0);
+	printf("serversend 3\n");
+	send(connFd, buffer, BUF-1, 0);
 	closedir(dir);
 	dir = opendir(dirname);
+	
 	while((dirzeiger = readdir(dir))) {
-		if (opendir(dirzeiger->d_name) == NULL)
+		temp = opendir(dirzeiger->d_name);
+		if (temp == NULL)
 		{
+			printf("%s\n", dirzeiger->d_name);
 			strcpy(buffer, dirzeiger->d_name);
 			strcat(buffer, "\n");
-			send(connFd, buffer, strlen(buffer), 0);
+			printf("serversend 4\n");
+			send(connFd, buffer, BUF-1, 0);
+		} else {
+			closedir(temp);
 		}
 	}
 	closedir(dir);
@@ -228,13 +256,13 @@ void sendFile(char* f, int connFd)
 	int i;
 	
 	//parsing given filename => wildcards
-	for(i = 0; i < strlen(f); i++) {
+	/*for(i = 0; i < strlen(f); i++) {
 		if( f[i] == '*') {
 			//calling function which returns a matrix (array[#files][0])
 			printf("\nSchternsche g'funde!\n");
 			break;
 		}
-	}
+	}*/
 	
 	strcat(filename, dirname);
 	strcat(filename, "/");
@@ -243,15 +271,19 @@ void sendFile(char* f, int connFd)
 	if(stat(filename, &attribut) == -1)
 	{
 		sprintf(sendBuffer, "%d", -1);
+		printf("serversend 5a\n");
 		send(connFd, sendBuffer, strlen(sendBuffer), 0);
 	}
 	else 
 	{
 		//for-loop for implementation of wildcards acceptance
-		for(i = 0; i < iterations; i++) {
+		//for(i = 0; i < iterations; i++) 
+		{
 		sizeOfFile = attribut.st_size;
 		sprintf(sendBuffer, "%ld", sizeOfFile);
+		printf("serversend 5b\n");
 		send(connFd, sendBuffer, BUF-1, 0);
+		printf("serverrecv 4\n");
 		recv(connFd, sendBuffer, BUF-1, 0);
 		if(strncmp(sendBuffer,"y", 1) != 0) {
 			return;
@@ -266,6 +298,7 @@ void sendFile(char* f, int connFd)
 					newBUF = leftBytes % (BUF-1);
 				}
 				fread(tempBuffer, newBUF, 1, file);
+				printf("serversend 6\n");
 				send(connFd, tempBuffer, newBUF, 0);
 				//printf("newBuf %i leftByte %i size %ld\n", newBUF, leftBytes, sizeOfFile);
 			}
@@ -317,7 +350,6 @@ int verify_user(char *user, char *bind_pw)
 }
 
 void addIgnoreEntry(char *username, char *ipAddress) {
-	ignoreList *tempPrev = NULL;
 	ignoreList *temp = rootIgnore;
 	while(temp != NULL) {
 		if (strcmp(temp->username, username) == 0) {
@@ -325,7 +357,6 @@ void addIgnoreEntry(char *username, char *ipAddress) {
 				break;
 			}
 		}
-		tempPrev = temp;
 		temp = temp->next;
 	}
 	
@@ -344,6 +375,52 @@ void addIgnoreEntry(char *username, char *ipAddress) {
 		temp->count++;
 		temp->timeStamp = time(NULL);
 	}
+}
+
+void cleanIgnoreList() {
+	ignoreList *temp = rootIgnore;
+	ignoreList *next = NULL;
+	while(temp != NULL) {
+		next = temp->next;
+		if (time(NULL) - temp->timeStamp > BLOCK_DURATION){
+			if(temp->prev != NULL) {
+				temp->prev->next = temp->next;
+			} else {
+				rootIgnore = temp->next;
+			}
+			if(temp->next != NULL) {
+				temp->next->prev = temp->prev;
+			}
+			free(temp);
+		}
+		temp = next;
+	}
+}
+
+int isBlockade(char *username, char *ipAddress) {
+	ignoreList *temp = rootIgnore;
+	while(temp != NULL) {
+		if (strcmp(temp->username, username) == 0) {
+			if(strcmp(temp->ipAddress, ipAddress) == 0) {
+				if(temp->count >= BLOCK_COUNT) {
+					return 1;
+				} else {
+					if(temp->prev != NULL) {
+						temp->prev->next = temp->next;
+					} else {
+						rootIgnore = temp->next;
+					}
+					if(temp->next != NULL) {
+						temp->next->prev = temp->prev;
+					}
+					free(temp);
+					return 0;
+				}
+			}
+		}
+		temp = temp->next;
+	}
+	return 0;
 }
 
 // write n bytes to a descriptor ...

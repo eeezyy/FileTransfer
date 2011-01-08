@@ -9,6 +9,7 @@
 #include <string.h>
 #include <fcntl.h>
 #include <errno.h> 
+#include <ncurses.h>
 
 #define BUF 2048
 ssize_t readline (int fd, void *vptr, size_t maxlen);
@@ -43,6 +44,7 @@ int main(int argc, char **argv) {
 
 	if(connect( sockFd,(struct sockaddr *) &address, sizeof(address)) == 0) {
 		 printf("Connection with server(%s) established\n", inet_ntoa(address.sin_addr));
+		 printf("clientrecv 1\n");
 		 size=recv(sockFd,buffer,BUF-1, 0);
 		 
 		 if(size > 0) {
@@ -57,18 +59,23 @@ int main(int argc, char **argv) {
 	
 	printf("Username: ");
 	fgets(buffer, BUF-1, stdin);
+	printf("clientsend 1\n");
 	send(sockFd, buffer, BUF-1, 0);
 	
-	printf("Password: ");
-	fgets(buffer, BUF-1, stdin);
+	char *pwd;
+	pwd=getpass("Password: ");
+	strcpy(buffer, pwd);
+	printf("clientsend 2\n");
 	send(sockFd, buffer, BUF-1, 0);
-	
+	printf("clientrecv 2\n");
 	recv(sockFd, buffer, BUF-1, 0);
 	printf("%s\n", buffer);
 
 	int status = -1;
 	
 	if(strcmp(buffer, "Username or password invalid\n") == 0) {
+		status = 0;
+	} else if(strcmp(buffer, "User is blocked!\n") == 0) {
 		status = 0;
 	}
 	
@@ -95,9 +102,9 @@ int main(int argc, char **argv) {
 				status = -1;
 			}
 		} while(status == -1);
-		
+		printf("clientsend 3\n");
 		send(sockFd, buffer, strlen(buffer), 0);
-		//fcntl(sockFd, F_SETFL, O_NONBLOCK);
+		printf("clientrecv 3\n");
 		size=recv(sockFd,buffer,BUF-1, 0);
 		long packages;
 		packages = strtol(buffer, NULL, 10);
@@ -111,9 +118,10 @@ int main(int argc, char **argv) {
 		if (status == 1) {
 			int i;
 			for (i=0; i < packages; i++) {
-				size=readline(sockFd, buffer, BUF-1);
+				printf("clientrecv 4\n");
+				size=recv(sockFd, buffer, BUF-1, 0);
 				if((size) > 0) {
-					buffer[size]= '\0';
+					//buffer[size]= '\0';
 					printf("%s",buffer);
 					//continue;
 				}
@@ -128,9 +136,11 @@ int main(int argc, char **argv) {
 			do {
 				fgets(buffer, BUF-1, stdin);
 				if (strncmp(buffer, "y", 1) == 0) {
+					printf("clientsend 4a\n");
 					send(sockFd, "y", BUF-1, 0);
 					isConfirmed = 1;
 				} else if (strncmp(buffer, "n", 1) == 0) {
+					printf("clientsend 4b\n");
 					send(sockFd, "n", BUF-1, 0);
 					isConfirmed = 0;
 				} else {
@@ -167,9 +177,11 @@ int main(int argc, char **argv) {
 							printf("!\n");
 						}
 					}
+					printf("clientrecv 5\n");
 					recv(sockFd, tempBuffer, newBUF, 0);
 					fwrite(tempBuffer, 1, newBUF, file);
 				}
+				fclose(file);
 			}
 		}
 	}
