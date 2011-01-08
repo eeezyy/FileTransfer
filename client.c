@@ -120,7 +120,7 @@ int main(int argc, char **argv) {
 					isConfirmed = 0;
 				} else {
 					isConfirmed = -1;
-					printf("Keine gültige Eingabe. (y/n) ");
+					printf("Invalid input. (y/n) ");
 				}
 			} while(isConfirmed == -1);
 			if(isConfirmed) {

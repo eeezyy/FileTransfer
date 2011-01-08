@@ -26,7 +26,7 @@ char dirname[1024];
 void *session(void *arg);
 void list(char* dir, int connFd);
 void sendFile(char*, int);
-ssize_t writen (int fd, const void *vptr, size_t n);
+//ssize_t writen (int fd, const void *vptr, size_t n);
 
 /*
 struct thrdData {
@@ -162,19 +162,27 @@ void list(char *directory, int connFd)
 	struct dirent* dirzeiger = NULL;
 	char buffer[BUF];
 	DIR *dir;
+	
 	dir = opendir(dirname);
 	int count = 0;
 	while((dirzeiger = readdir(dir))) {
-		count++;
+		if(opendir(dirzeiger->d_name) == NULL)
+		{
+			count++;
+		}
 	}
+	printf("%i\n", count);
 	sprintf(buffer, "%d", count);
 	send(connFd, buffer, strlen(buffer), 0);
 	closedir(dir);
 	dir = opendir(dirname);
 	while((dirzeiger = readdir(dir))) {
-		strcpy(buffer, dirzeiger->d_name);
-		strcat(buffer, "\n");
-		send(connFd, buffer, strlen(buffer), 0);
+		if (opendir(dirzeiger->d_name) == NULL)
+		{
+			strcpy(buffer, dirzeiger->d_name);
+			strcat(buffer, "\n");
+			send(connFd, buffer, strlen(buffer), 0);
+		}
 	}
 	closedir(dir);
 	//fflush(stdout);
@@ -215,7 +223,7 @@ void sendFile(char* f, int connFd)
 		for(i = 0; i < iterations; i++) {
 		sizeOfFile = attribut.st_size;
 		sprintf(sendBuffer, "%ld", sizeOfFile);
-		writen(connFd, sendBuffer, BUF-1);
+		send(connFd, sendBuffer, BUF-1, 0);
 		recv(connFd, sendBuffer, BUF-1, 0);
 		if(strncmp(sendBuffer,"y", 1) != 0) {
 			return;
@@ -231,7 +239,7 @@ void sendFile(char* f, int connFd)
 				}
 				fread(tempBuffer, newBUF, 1, file);
 				send(connFd, tempBuffer, newBUF, 0);
-				printf("newBuf %i leftByte %i size %ld\n", newBUF, leftBytes, sizeOfFile);
+				//printf("newBuf %i leftByte %i size %ld\n", newBUF, leftBytes, sizeOfFile);
 			}
 			i++;
 		}
@@ -241,7 +249,7 @@ void sendFile(char* f, int connFd)
 }
 
 // write n bytes to a descriptor ...
-ssize_t writen (int fd, const void *vptr, size_t n)
+/*ssize_t writen (int fd, const void *vptr, size_t n)
 {
 	size_t nleft ;
 	ssize_t nwritten ;
@@ -259,4 +267,4 @@ ssize_t writen (int fd, const void *vptr, size_t n)
 		ptr += nwritten ;
 	} ;
 	return (n) ;
-} ;
+} ;*/
