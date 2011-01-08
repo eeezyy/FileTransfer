@@ -9,11 +9,10 @@
 #include <string.h>
 #include <fcntl.h>
 #include <errno.h> 
- 
+
 #define BUF 2048
 ssize_t readline (int fd, void *vptr, size_t maxlen);
 static ssize_t my_read (int fd, char *ptr);
-
 
 int main(int argc, char **argv) {
 
@@ -55,8 +54,24 @@ int main(int argc, char **argv) {
 		 perror("Connect error - no server available");
 		 return EXIT_FAILURE;
 	}
+	
+	printf("Username: ");
+	fgets(buffer, BUF-1, stdin);
+	send(sockFd, buffer, BUF-1, 0);
+	
+	printf("Password: ");
+	fgets(buffer, BUF-1, stdin);
+	send(sockFd, buffer, BUF-1, 0);
+	
+	recv(sockFd, buffer, BUF-1, 0);
+	printf("%s\n", buffer);
 
 	int status = -1;
+	
+	if(strcmp(buffer, "Username or password invalid\n") == 0) {
+		status = 0;
+	}
+	
 	while(status != 0) {
 		
 		do {

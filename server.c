@@ -11,9 +11,13 @@
 #include <pthread.h>
 #include <sys/stat.h>
 #include <errno.h>
+#include <ldap.h>
+#include <time.h>
 
 #define BUF 2048
 #define MAXAMOUNT 20
+#define LDAP_HOST "ldap.technikum-wien.at"
+#define LDAP_PORT 389
 
 //++++++++++++++++++++
 // globale Variablen
@@ -26,17 +30,25 @@ char dirname[1024];
 void *session(void *arg);
 void list(char* dir, int connFd);
 void sendFile(char*, int);
+int verify_user(char *bind_user, char *bind_pw);
+void addIgnoreEntry(char *username, char *ipAddress);
 //ssize_t writen (int fd, const void *vptr, size_t n);
 
-/*
-struct thrdData {
-	char* clientAddress;
-	short clientPort;
-	int clientFd;
-	char dirname[1024];
-	struct thrdData *nxt;
-};
-*/
+typedef struct ignoreList {
+	struct ignoreList *prev;
+	char ipAddress[16];
+	time_t timeStamp;
+	char username[50];
+	int count;
+	struct ignoreList *next;
+} ignoreList;
+
+typedef struct thrdData {
+	char ipAddress[16];
+	int socket;
+} thrdData;
+
+ignoreList *rootIgnore = NULL;
 
 int main(int argc, char **argv) {
 	
@@ -45,8 +57,7 @@ socklen_t addrlen;
 struct sockaddr_in address, cliaddress;
 long port;
 
-
-//struct thrdData* data;
+struct thrdData* data;
 pthread_t socketThread[MAXAMOUNT];
 int index = 0;
 
@@ -86,10 +97,11 @@ while(1){
 	strcpy(buffer,"Welcome to myserver, Please enter your command:\n");
 	send(connFd, buffer, strlen(buffer),0);
 */
-//		data =(struct thrdData*)malloc(sizeof(struct thrdData));
-//		data->clientAddress = inet_ntoa(cliaddress.sin_addr);
+		data =(struct thrdData*)malloc(sizeof(struct thrdData));
+		strcpy(data->ipAddress,inet_ntoa(cliaddress.sin_addr));
 //		data->clientPort = ntohs(cliaddress.sin_port);
-		pthread_create(&socketThread[index],NULL,session,(void*)&connFd);
+		data->socket = connFd;
+		pthread_create(&socketThread[index],NULL,session,(void*)data);
 		//index++;
  } 
  else {
@@ -103,16 +115,32 @@ while(1){
 
 void *session(void *arg)
 {
-//	struct thrdData* init =(struct thrdData* )(arg);
-	int connFd = *((int *)arg);
+	thrdData* init =(thrdData* )(arg);
+	int connFd = init->socket;
 	char sendBuffer[BUF];
 	char receiveBuffer[BUF];
 	int size;
+	char username[BUF];
+	char passwd[BUF];
 	
 	//pthread_detach(pthread_self());
 	printf("Thread gestartet : %d\n", connFd);
 	strcpy(sendBuffer,"Welcome to myserver, Please enter your command:\n");
 	send(connFd, sendBuffer, strlen(sendBuffer),0);
+	
+	// recv username
+	recv(connFd, receiveBuffer, BUF-1, 0);
+	strcpy(username, receiveBuffer);
+	// recv passwd
+	recv(connFd, receiveBuffer, BUF-1, 0);
+	strcpy(passwd, receiveBuffer);
+	if(verify_user(username, passwd) == 0) {
+		send(connFd, "Username or password invalid\n", BUF-1, 0);
+		addIgnoreEntry(username, init->ipAddress);
+		close(connFd);
+		return NULL;
+	}
+	send(connFd, "Login successful!\n", BUF-1, 0);
 	
 	while(strncmp(receiveBuffer, "quit", 4) != 0) {
 		size = recv(connFd, receiveBuffer, BUF-1, 0);
@@ -245,6 +273,76 @@ void sendFile(char* f, int connFd)
 		}
 		fclose(file);
 		}
+	}
+}
+
+int verify_user(char *user, char *bind_pw)
+{
+   LDAP *ld;			/* LDAP resource handle */
+	char bind_user[1024] = "";
+   int rc=0;
+
+   /* setup LDAP connection */
+   if ((ld=ldap_init(LDAP_HOST, LDAP_PORT)) == NULL)
+   {
+      perror("ldap_init failed");
+      return 0;
+   }
+
+   //printf("connected to LDAP server %s on port %d\n",LDAP_HOST,LDAP_PORT);
+	char *token;
+	token = strtok(user, "\n");
+	if(token[strlen(token)-1]==13) 
+		token[strlen(token)-1]='\0';
+		
+	char *pw_token;
+	pw_token = strtok(bind_pw, "\n");
+	if(pw_token[strlen(pw_token)-1] == 13)
+		pw_token[strlen(pw_token)-1]='\0';
+   sprintf(bind_user, "uid=%s,ou=People,dc=technikum-wien,dc=at", token);
+   rc = ldap_simple_bind_s(ld,bind_user,bind_pw);
+
+   if (rc != LDAP_SUCCESS)
+   {
+		perror("ldap_bind failed");
+		ldap_unbind(ld);
+		return 0;
+   }
+   else
+   {
+		printf("login!\n");
+		ldap_unbind(ld);
+		return 1;
+   }
+}
+
+void addIgnoreEntry(char *username, char *ipAddress) {
+	ignoreList *tempPrev = NULL;
+	ignoreList *temp = rootIgnore;
+	while(temp != NULL) {
+		if (strcmp(temp->username, username) == 0) {
+			if(strcmp(temp->ipAddress, ipAddress) == 0) {
+				break;
+			}
+		}
+		tempPrev = temp;
+		temp = temp->next;
+	}
+	
+	ignoreList *entry = NULL;
+	
+	if(temp == NULL) {
+		entry = (ignoreList*)malloc(sizeof(ignoreList));
+		strcpy(entry->username, username);
+		entry->timeStamp = time(NULL);
+		strcpy(entry->ipAddress, ipAddress);
+		entry->prev = NULL;
+		entry->next = rootIgnore;
+		entry->count = 1;
+		rootIgnore = entry;
+	} else {
+		temp->count++;
+		temp->timeStamp = time(NULL);
 	}
 }
 
