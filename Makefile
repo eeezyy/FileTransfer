@@ -26,6 +26,4 @@ ${PROGRAM_LDAP}.o: ${PROGRAM_LDAP}.c
 	gcc ${CFLAGS} -c ${PROGRAM_LDAP}.c -lldap -DLDAP_DEPRECATED
 	
 clean: 
-	rm server server.o client client.o ldap ldap.o
-	
-	# gcc -Wall -lldap -o ldap ldap.c -DLDAP_DEPRECATED
+	rm server server.o client client.o

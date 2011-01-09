@@ -130,19 +130,19 @@ void *session(void *arg)
 	//pthread_detach(pthread_self());
 	printf("Thread gestartet : %d\n", connFd);
 	strcpy(sendBuffer,"Welcome to myserver, Please enter your command:\n");
-	printf("serversend 1\n");
+	//printf("send welcome message\n");
 	send(connFd, sendBuffer, BUF-1,0);
 	
 	// recv username
-	printf("serverrecv 1\n");
+	//printf("recv username\n");
 	recv(connFd, receiveBuffer, BUF-1, 0);
 	strcpy(username, receiveBuffer);
 	// recv passwd
-	printf("serverrecv 2\n");
+	//printf("recv password\n");
 	recv(connFd, receiveBuffer, BUF-1, 0);
 	strcpy(passwd, receiveBuffer);
 	if(verify_user(username, passwd) == 0) {
-		printf("serversend 2a\n");
+		//printf("send loginmessage invalid\n");
 		send(connFd, "Username or password invalid\n", BUF-1, 0);
 		addIgnoreEntry(username, init->ipAddress);
 		close(connFd);
@@ -150,16 +150,16 @@ void *session(void *arg)
 	}
 	cleanIgnoreList();
 	if(isBlockade(username, init->ipAddress) == 1) {
-		printf("serversend 2b\n");
+		//printf("send loginmessage blocked\n");
 		send(connFd, "User is blocked!\n", BUF-1, 0);
 		close(connFd);
 		return NULL;
 	}
-	printf("serversend 2c\n");
+	//printf("send loginmessage successful\n");
 	send(connFd, "Login successful!\n", BUF-1, 0);
 	strcpy(receiveBuffer, "");
 	while(strncmp(receiveBuffer, "quit", 4) != 0) {
-	printf("serverrecv 3\n");
+		//printf("recv command\n");
 		size = recv(connFd, receiveBuffer, BUF-1, 0);
 
 		if(size > 0) {
@@ -209,7 +209,7 @@ void list(char *directory, int connFd)
 	DIR *dir;
 	
 	dir = opendir(dirname);
-	int count = 0;
+	long count = 0;
 	DIR *temp;
 	while((dirzeiger = readdir(dir))) {
 		temp = opendir(dirzeiger->d_name);
@@ -220,9 +220,9 @@ void list(char *directory, int connFd)
 			closedir(temp);
 		}
 	}
-	printf("%i\n", count);
-	sprintf(buffer, "%d", count);
-	printf("serversend 3\n");
+	strcpy(buffer, "");
+	sprintf(buffer, "%ld", count);
+	//printf("send packages\n");
 	send(connFd, buffer, BUF-1, 0);
 	closedir(dir);
 	dir = opendir(dirname);
@@ -231,17 +231,19 @@ void list(char *directory, int connFd)
 		temp = opendir(dirzeiger->d_name);
 		if (temp == NULL)
 		{
-			printf("%s\n", dirzeiger->d_name);
-			strcpy(buffer, dirzeiger->d_name);
-			strcat(buffer, "\n");
-			printf("serversend 4\n");
-			send(connFd, buffer, BUF-1, 0);
+			char bufferList[BUF];
+			//printf("%s\n", dirzeiger->d_name);
+			strcpy(bufferList, "");
+			strcpy(bufferList, dirzeiger->d_name);
+			strcat(bufferList, "\n");
+			//printf("send list\n");
+			send(connFd, bufferList, strlen(bufferList), 0);
 		} else {
 			closedir(temp);
 		}
 	}
 	closedir(dir);
-	//fflush(stdout);
+	fflush(stdout);
 }
 
 void sendFile(char* f, int connFd)
@@ -252,8 +254,8 @@ void sendFile(char* f, int connFd)
 	char sendBuffer[BUF];
 	FILE *file;
 	int leftBytes;
-	int iterations = 1;
-	int i;
+	//int iterations = 1;
+	//int i;
 	
 	//parsing given filename => wildcards
 	/*for(i = 0; i < strlen(f); i++) {
@@ -270,9 +272,9 @@ void sendFile(char* f, int connFd)
 	
 	if(stat(filename, &attribut) == -1)
 	{
-		sprintf(sendBuffer, "%d", -1);
-		printf("serversend 5a\n");
-		send(connFd, sendBuffer, strlen(sendBuffer), 0);
+		sprintf(sendBuffer, "%ld", (long)-1);
+		//printf("send packages stat error\n");
+		send(connFd, sendBuffer, BUF-1, 0);
 	}
 	else 
 	{
@@ -281,9 +283,9 @@ void sendFile(char* f, int connFd)
 		{
 		sizeOfFile = attribut.st_size;
 		sprintf(sendBuffer, "%ld", sizeOfFile);
-		printf("serversend 5b\n");
+		//printf("send packages\n");
 		send(connFd, sendBuffer, BUF-1, 0);
-		printf("serverrecv 4\n");
+		//printf("recv confirm download\n");
 		recv(connFd, sendBuffer, BUF-1, 0);
 		if(strncmp(sendBuffer,"y", 1) != 0) {
 			return;
@@ -298,7 +300,7 @@ void sendFile(char* f, int connFd)
 					newBUF = leftBytes % (BUF-1);
 				}
 				fread(tempBuffer, newBUF, 1, file);
-				printf("serversend 6\n");
+				//printf("send file\n");
 				send(connFd, tempBuffer, newBUF, 0);
 				//printf("newBuf %i leftByte %i size %ld\n", newBUF, leftBytes, sizeOfFile);
 			}
