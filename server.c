@@ -317,8 +317,8 @@ int verify_user(char *user, char *bind_pw)
 {
     LDAP *ld;			/* LDAP resource handle */
     LDAPMessage *result, *e;	/* LDAP result handle */
-    char BIND_USER[1024] = "uid=if09b505,ou=People,dc=technikum-wien,dc=at";
-    char BIND_PW[1024] = "kumbeiz123456";
+    char BIND_USER[1024] = "";
+    char BIND_PW[1024] ="";
     char FILTER[1024] = "";
     char dn[1024] = "";
 
@@ -334,7 +334,7 @@ int verify_user(char *user, char *bind_pw)
    /* setup LDAP connection */
     if ((ld=ldap_init(LDAP_HOST, LDAP_PORT)) == NULL)    {
         perror("ldap_init failed");
-        return EXIT_FAILURE;
+        return 0;
     }
 
    //printf("connected to LDAP server %s on port %d\n",LDAP_HOST,LDAP_PORT);
@@ -344,7 +344,7 @@ int verify_user(char *user, char *bind_pw)
 
    if (rc != LDAP_SUCCESS)    {
       fprintf(stderr,"LDAP error: %s\n",ldap_err2string(rc));
-      return EXIT_FAILURE;
+      return 0;
    }
 /* else {
       printf("bind with (hard)coded user succeed\n");
@@ -363,7 +363,7 @@ int verify_user(char *user, char *bind_pw)
 
    if (rc != LDAP_SUCCESS) {
       fprintf(stderr,"LDAP search error: %s\n",ldap_err2string(rc));
-      return EXIT_FAILURE;
+      return 0;
    }
    else {
       //printf("user gefunden\n");
