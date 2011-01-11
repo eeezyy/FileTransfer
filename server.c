@@ -178,8 +178,8 @@ void *session(void *arg)
 				char *token;
 				token = strtok(receiveBuffer, " ");
 				token = strtok(NULL, "\n");
-				if(token[strlen(token)-1]==13)
-					token[strlen(token)-1]='\0';
+				//if(token[strlen(token)-1]==13)
+				//	token[strlen(token)-1]='\0';
 				sendFile(token, connFd);
 			}
 			else if(strncmp(receiveBuffer, "quit", 4) == 0) {
@@ -354,8 +354,8 @@ int verify_user(char *user, char *bind_pw)
     strcpy(FILTER, "(uid=");
     char *token;
 	token = strtok(user, "\n");
-	if(token[strlen(token)-1]==13)
-    token[strlen(token)-1]='\0';
+	//if(token[strlen(token)-1]==13)
+	//	token[strlen(token)-1]='\0';
     strcat(FILTER, token);
     strcat(FILTER, ")");
 
