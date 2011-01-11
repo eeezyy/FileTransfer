@@ -9,7 +9,6 @@
 #include <string.h>
 #include <fcntl.h>
 #include <errno.h> 
-#include <ncurses.h>
 
 #define BUF 2048
 ssize_t readline (int fd, void *vptr, size_t maxlen);
@@ -93,8 +92,8 @@ int main(int argc, char **argv) {
 				strcpy(temp, buffer);
 				filename = strtok(temp, " ");
 				filename = strtok(NULL, "\n");
-				//if(filename[strlen(filename)-1]==13) 
-				//	filename[strlen(filename)-1]='\0';
+				if(filename[strlen(filename)-1]==13) 
+					filename[strlen(filename)-1]='\0';
 				strcpy(fn, filename);
 			} else if(strncmp(buffer, "quit", 4) == 0) {
 				status = 0;

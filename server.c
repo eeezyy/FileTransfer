@@ -178,8 +178,8 @@ void *session(void *arg)
 				char *token;
 				token = strtok(receiveBuffer, " ");
 				token = strtok(NULL, "\n");
-				//if(token[strlen(token)-1]==13)
-				//	token[strlen(token)-1]='\0';
+				if(token[strlen(token)-1]==13)
+					token[strlen(token)-1]='\0';
 				sendFile(token, connFd);
 			}
 			else if(strncmp(receiveBuffer, "quit", 4) == 0) {
@@ -317,8 +317,8 @@ int verify_user(char *user, char *bind_pw)
 {
     LDAP *ld;			/* LDAP resource handle */
     LDAPMessage *result, *e;	/* LDAP result handle */
-    char BIND_USER[1024] = "";
-    char BIND_PW[1024] ="";
+    char BIND_USER[1024] = "uid=if09b505,ou=People,dc=technikum-wien,dc=at";
+    char BIND_PW[1024] = "kumbeiz123456";
     char FILTER[1024] = "";
     char dn[1024] = "";
 
@@ -354,8 +354,8 @@ int verify_user(char *user, char *bind_pw)
     strcpy(FILTER, "(uid=");
     char *token;
 	token = strtok(user, "\n");
-	//if(token[strlen(token)-1]==13)
-	//	token[strlen(token)-1]='\0';
+	if(token[strlen(token)-1]==13)
+		token[strlen(token)-1]='\0';
     strcat(FILTER, token);
     strcat(FILTER, ")");
 
