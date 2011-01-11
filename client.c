@@ -1,3 +1,9 @@
+/*
+ * Authoren: Janosevic Goran, Kumbeiz Alexander
+ * 
+ *
+ */
+
 /* myclient.c */
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -7,7 +13,6 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <fcntl.h>
 #include <errno.h> 
 
 #define BUF 2048
@@ -59,16 +64,19 @@ int main(int argc, char **argv) {
 	printf("Username: ");
 	fgets(buffer, BUF-1, stdin);
 	//printf("send username\n");
-	send(sockFd, buffer, BUF-1, 0);
+	send(sockFd, buffer, strlen(buffer), 0);
 	
 	char *pwd;
 	pwd=getpass("Password: ");
 	strcpy(buffer, pwd);
 	//printf("send password\n");
-	send(sockFd, buffer, BUF-1, 0);
+	send(sockFd, buffer, strlen(buffer), 0);
 	//printf("recv loginmessage\n");
-	recv(sockFd, buffer, BUF-1, 0);
-	printf("%s\n", buffer);
+	size = recv(sockFd, buffer, BUF-1, 0);
+	if(size > 0) {
+		buffer[size]= '\0';
+		printf("%s\n", buffer);
+	}
 
 	int status = -1;
 	
@@ -88,7 +96,7 @@ int main(int argc, char **argv) {
 				status = 1;
 			} else if(strncmp(buffer, "get", 3) == 0) {
 				status = 2;
-				char temp[BUF];
+				char temp[BUF] = "";
 				strcpy(temp, buffer);
 				filename = strtok(temp, " ");
 				filename = strtok(NULL, "\n");
@@ -102,12 +110,16 @@ int main(int argc, char **argv) {
 			}
 		} while(status == -1);
 		//printf("send command\n");
-		send(sockFd, buffer, BUF-1, 0);
+		send(sockFd, buffer, strlen(buffer), 0);
 		//printf("recv packages\n");
-		strcpy(buffer, "");
-		size=recv(sockFd,buffer,BUF-1, 0);
+		char bufferPackages[BUF];
+		size=recv(sockFd,bufferPackages,BUF-1, 0);
+		if(size > 0) {
+			bufferPackages[size] = '\0';
+		}
 		long packages;
-		packages = strtol(buffer, NULL, 10);
+		packages = strtol(bufferPackages, NULL, 10);
+		//printf("packages %s,%ld\n", bufferPackages, packages);
 		if (packages == -1) {
 			if (status == 2) {
 				printf("File not found!\n");
@@ -117,15 +129,22 @@ int main(int argc, char **argv) {
 		// list
 		if (status == 1) {
 			int i;
+			char bufferList[BUF] = "";
 			for (i=0; i < packages; i++) {
-				char bufferList[BUF];
 				//printf("recv list\n");
-				strcpy(bufferList, "");
+				//strcpy(bufferList, "");
 				size=readline(sockFd, bufferList, BUF-1);
 				if((size) > 0) {
-					buffer[size]= '\0';
+					//buffer[size]= '\0';
 					printf("%s",bufferList);
+					fflush(stdout);
 					//continue;
+				} else if (size == 0) {
+					printf("connect to socket failed\n");
+					break;
+				} else if (size == -1) {
+					printf("error in socket\n");
+					break;
 				}
 			}
 		}
@@ -139,11 +158,13 @@ int main(int argc, char **argv) {
 				fgets(buffer, BUF-1, stdin);
 				if (strncmp(buffer, "y", 1) == 0) {
 					//printf("send confirm download y\n");
-					send(sockFd, "y", BUF-1, 0);
+					strcpy(buffer, "y");
+					send(sockFd, buffer, strlen(buffer), 0);
 					isConfirmed = 1;
 				} else if (strncmp(buffer, "n", 1) == 0) {
 					//printf("send confirm download n\n");
-					send(sockFd, "n", BUF-1, 0);
+					strcpy(buffer, "n");
+					send(sockFd, buffer, strlen(buffer), 0);
 					isConfirmed = 0;
 				} else {
 					isConfirmed = -1;
@@ -159,12 +180,14 @@ int main(int argc, char **argv) {
 				file = fopen(dirfile, "wb");
 				int progress = 0;
 				int percent = 0;
-				for(leftBytes = packages; leftBytes >= 0; leftBytes -= (BUF-1)) {
-					int newBUF = BUF-1;
+				int j = 1;
+				int newBUF = BUF-1;
+				size = 0;
+				for(leftBytes = packages; leftBytes > 0; leftBytes -= size) {
 					char tempBuffer[BUF] = "";
-					if(leftBytes < (BUF-1)) {
+					/*if(leftBytes < (BUF-1)) {
 						newBUF = leftBytes % (BUF-1);
-					}
+					}*/
 					percent = (double)(packages-leftBytes+newBUF)/(double)packages*20;
 					int temp = percent-progress;
 					if(temp >= 0) {
@@ -180,8 +203,19 @@ int main(int argc, char **argv) {
 						}
 					}
 					//printf("recv file\n");
-					recv(sockFd, tempBuffer, newBUF, 0);
-					fwrite(tempBuffer, 1, newBUF, file);
+					size = recv(sockFd, tempBuffer,BUF-1, 0);
+					if (size > 0) {
+						//printf("%i.recvfile\n", j);
+						//tempBuffer[size] = '\0';
+					} else if (size == 0) {
+						printf("connect to socket failed\n");
+						break;
+					} else if (size == -1) {
+						printf("error in socket\n");
+						break;
+					}
+					fwrite(tempBuffer, 1, size, file);
+					j++;
 				}
 				fclose(file);
 			}

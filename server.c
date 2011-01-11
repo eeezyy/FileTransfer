@@ -133,19 +133,26 @@ void *session(void *arg)
 	printf("Thread gestartet : %d\n", connFd);
 	strcpy(sendBuffer,"Welcome to myserver, Please enter your command:\n");
 	//printf("send welcome message\n");
-	send(connFd, sendBuffer, BUF-1,0);
+	send(connFd, sendBuffer, strlen(sendBuffer),0);
 
 	// recv username
 	//printf("recv username\n");
-	recv(connFd, receiveBuffer, BUF-1, 0);
+	size = recv(connFd, receiveBuffer, BUF-1, 0);
+	if (size > 0) {
+		receiveBuffer[size] = '\0';
+	}
 	strcpy(username, receiveBuffer);
 	// recv passwd
 	//printf("recv password\n");
-	recv(connFd, receiveBuffer, BUF-1, 0);
+	size = recv(connFd, receiveBuffer, BUF-1, 0);
+	if (size > 0) {
+		receiveBuffer[size] = '\0';
+	}
 	strcpy(passwd, receiveBuffer);
 	if(verify_user(username, passwd) == 0) {
 		//printf("send loginmessage invalid\n");
-		send(connFd, "Username or password invalid\n", BUF-1, 0);
+		strcpy(sendBuffer, "Username or password invalid\n");
+		send(connFd, sendBuffer, strlen(sendBuffer), 0);
 		addIgnoreEntry(username, init->ipAddress);
 		close(connFd);
 		return NULL;
@@ -153,7 +160,8 @@ void *session(void *arg)
 	cleanIgnoreList();
 	if(isBlockade(username, init->ipAddress) == 1) {
 		//printf("send loginmessage blocked\n");
-		send(connFd, "User is blocked!\n", BUF-1, 0);
+		strcpy(sendBuffer, "User is blocked!\n");
+		send(connFd, sendBuffer, strlen(sendBuffer), 0);
 		close(connFd);
 		return NULL;
 	}
@@ -162,6 +170,7 @@ void *session(void *arg)
 	strcpy(receiveBuffer, "");
 	while(strncmp(receiveBuffer, "quit", 4) != 0) {
 		//printf("recv command\n");
+		sleep(3);
 		size = recv(connFd, receiveBuffer, BUF-1, 0);
 
 		if(size > 0) {
@@ -185,9 +194,8 @@ void *session(void *arg)
 			else if(strncmp(receiveBuffer, "quit", 4) == 0) {
 				printf("Client closed remote socket\n");
 				break;
-			}
-			else {
-				strcpy(sendBuffer,"");
+			} else {
+				strcpy(receiveBuffer, "");
 			}
 		}
 		else if(size == 0) {
@@ -207,7 +215,7 @@ void *session(void *arg)
 void list(char *directory, int connFd)
 {
 	struct dirent* dirzeiger = NULL;
-	char buffer[BUF];
+	char buffer[BUF] = "";
 	DIR *dir;
 
 	dir = opendir(dirname);
@@ -222,10 +230,9 @@ void list(char *directory, int connFd)
 			closedir(temp);
 		}
 	}
-	strcpy(buffer, "");
 	sprintf(buffer, "%ld", count);
 	//printf("send packages\n");
-	send(connFd, buffer, BUF-1, 0);
+	send(connFd, buffer, strlen(buffer), 0);
 	closedir(dir);
 	dir = opendir(dirname);
 
@@ -254,8 +261,10 @@ void sendFile(char* f, int connFd)
 	struct stat attribut;
 	unsigned long sizeOfFile = 0;
 	char sendBuffer[BUF];
+	char receiveBuffer[BUF];
 	FILE *file;
 	int leftBytes;
+	int size;
 	//int iterations = 1;
 	//int i;
 
@@ -275,40 +284,49 @@ void sendFile(char* f, int connFd)
 	if(stat(filename, &attribut) == -1)
 	{
 		sprintf(sendBuffer, "%ld", (long)-1);
-		//printf("send packages stat error\n");
-		send(connFd, sendBuffer, BUF-1, 0);
+		printf("send packages stat error\n");
+		send(connFd, sendBuffer, strlen(sendBuffer), 0);
 	}
 	else
 	{
-		//for-loop for implementation of wildcards acceptance
-		//for(i = 0; i < iterations; i++)
-		{
 		sizeOfFile = attribut.st_size;
 		sprintf(sendBuffer, "%ld", sizeOfFile);
-		//printf("send packages\n");
-		send(connFd, sendBuffer, BUF-1, 0);
+		printf("send packages %ld/%s\n", sizeOfFile, sendBuffer);
+		send(connFd, sendBuffer, strlen(sendBuffer), 0);
 		//printf("recv confirm download\n");
-		recv(connFd, sendBuffer, BUF-1, 0);
-		if(strncmp(sendBuffer,"y", 1) != 0) {
+		size = recv(connFd, receiveBuffer, BUF-1, 0);
+		if (size > 0) {
+			receiveBuffer[size] = '\0';
+		}
+		if(strncmp(receiveBuffer,"y", 1) != 0) {
 			return;
 		}
 		file = fopen(filename, "rb");
+		printf("try open file\n");
 		if (file != NULL) {
+			printf("file is open\n");
 			int newBUF = BUF-1;
-			char tempBuffer[BUF] = "";
-			int i = 0;
-			for(leftBytes = sizeOfFile; leftBytes >= 0; leftBytes -= (BUF-1)) {
+			int i = 1;
+			int size;
+			for(leftBytes = sizeOfFile; leftBytes > 0; leftBytes -= (BUF-1)) {
+				char tempBuffer[BUF];
 				if(leftBytes < (BUF-1)) {
 					newBUF = leftBytes % (BUF-1);
 				}
-				fread(tempBuffer, newBUF, 1, file);
+				size = fread(tempBuffer, newBUF, 1, file);
 				//printf("send file\n");
-				send(connFd, tempBuffer, newBUF, 0);
+				//if(size > 0) 
+				{
+					send(connFd, tempBuffer, newBUF, 0);
+					//printf("%i.sendfile\n", i);
+				}
 				//printf("newBuf %i leftByte %i size %ld\n", newBUF, leftBytes, sizeOfFile);
+				i++;
 			}
-			i++;
-		}
-		fclose(file);
+			fclose(file);
+			printf("close file\n");
+		} else {
+			printf("can't open file\n");
 		}
 	}
 }
