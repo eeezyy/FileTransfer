@@ -68,14 +68,33 @@ int main(int argc, char **argv) {
 		 return EXIT_FAILURE;
 	}
 	
+	// get username
 	printf("Username: ");
 	fgets(buffer, BUF-1, stdin);
-	//printf("send username\n");
+	if(strlen(buffer) <= 1) {
+		strcpy(buffer, "null");
+		// send pseudo username and password
+		send(sockFd, buffer, strlen(buffer), 0);
+		send(sockFd, buffer, strlen(buffer), 0);
+		close(sockFd);
+		fprintf(stderr, "User invalid\n");
+		return EXIT_FAILURE;
+	}
+	// send username
 	send(sockFd, buffer, strlen(buffer), 0);
 	
+	// get password
 	char *pwd;
 	pwd=getpass("Password: ");
 	strcpy(buffer, pwd);
+	if(strlen(buffer) < 1) {
+		strcpy(buffer, "null");
+		// send pseudo password
+		send(sockFd, buffer, strlen(buffer), 0);
+		close(sockFd);
+		fprintf(stderr, "User or password invalid\n");
+		return EXIT_FAILURE;
+	}
 	// send password
 	send(sockFd, buffer, strlen(buffer), 0);
 

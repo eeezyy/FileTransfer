@@ -53,6 +53,7 @@ typedef struct thrdData {
 char dirname[1024];
 // root of linked blocklist
 ignoreList *rootIgnore = NULL;
+pthread_mutex_t lockBlockList = PTHREAD_MUTEX_INITIALIZER;
 
 //++++++++++++++++++++
 // global functions
@@ -78,7 +79,7 @@ int main(int argc, char **argv) {
 	// thread vars
 	struct thrdData* data;
 	pthread_t socketThread;
-
+	
 	if(argc < 2) {
 		fprintf(stderr, "USAGE: %s PORT Directory\n", argv[0]);
 		return EXIT_FAILURE;
@@ -278,9 +279,9 @@ void list(char *directory, int connFd)
 		{
 			// if file, increment size of filename
 			if(stat(dirzeiger->d_name, &attribut) == -1) {
-				sprintf(buffer, "%s\n", dirzeiger->d_name);
+				sprintf(buffer, "%15s\n", dirzeiger->d_name);
 			} else {
-				sprintf(buffer, "%s\t%ld B\n", dirzeiger->d_name, attribut.st_size);
+				sprintf(buffer, "%15s\t%15ld B\n", dirzeiger->d_name, attribut.st_size);
 			}
 			count += strlen(buffer);
 		} else {
@@ -306,9 +307,9 @@ void list(char *directory, int connFd)
 		{
 			char bufferList[BUF];
 			if(stat(dirzeiger->d_name, &attribut) == -1) {
-				sprintf(bufferList, "%s\n", dirzeiger->d_name);
+				sprintf(bufferList, "%15s\n", dirzeiger->d_name);
 			} else {
-				sprintf(bufferList, "%s\t%ld B\n", dirzeiger->d_name, attribut.st_size);
+				sprintf(bufferList, "%15s\t%15ld B\n", dirzeiger->d_name, attribut.st_size);
 			}
 			// send filename
 			send(connFd, bufferList, strlen(bufferList), 0);
@@ -549,6 +550,7 @@ int verify_user(char *user, char *pwd)
  * Starts with Counter 1 and current timestamp.
  */
 void addIgnoreEntry(char *username, char *ipAddress) {
+	pthread_mutex_lock(&lockBlockList);
 	ignoreList *temp = rootIgnore;
 	
 	// search for user, and ipAddress
@@ -582,6 +584,7 @@ void addIgnoreEntry(char *username, char *ipAddress) {
 		temp->count++;
 		temp->timeStamp = time(NULL);
 	}
+	pthread_mutex_unlock(&lockBlockList);
 }
 
 /*
@@ -589,6 +592,7 @@ void addIgnoreEntry(char *username, char *ipAddress) {
  * Remove entry of expired timestamp.
  */
 void cleanIgnoreList() {
+	pthread_mutex_lock(&lockBlockList);
 	ignoreList *temp = rootIgnore;
 	ignoreList *next = NULL;
 	while(temp != NULL) {
@@ -609,6 +613,7 @@ void cleanIgnoreList() {
 		}
 		temp = next;
 	}
+	pthread_mutex_unlock(&lockBlockList);
 }
 
 /*
@@ -617,6 +622,7 @@ void cleanIgnoreList() {
  * else delete entry.
  */
 int isBlockade(char *username, char *ipAddress) {
+	pthread_mutex_lock(&lockBlockList);
 	ignoreList *temp = rootIgnore;
 	while(temp != NULL) {
 		if (strcmp(temp->username, username) == 0) {
@@ -641,6 +647,7 @@ int isBlockade(char *username, char *ipAddress) {
 		}
 		temp = temp->next;
 	}
+	pthread_mutex_unlock(&lockBlockList);
 	return 0;
 }
 
@@ -653,11 +660,11 @@ void blocklist(int connFd) {
 	int count = 0;
 	
 	// count bytes to send
-	strcpy(buffer, "USERNAME\tIP-ADDRESS\tCOUNTER\n");
+	strcpy(buffer, "       USERNAME      IP-ADDRESS         COUNTER    BLOCKED(MIN)\n");
 	count += strlen(buffer);
 	
 	while(temp != NULL) {
-		sprintf(buffer, "%s\t%s\t%i\n", temp->username, temp->ipAddress, temp->count);
+		sprintf(buffer, "%15s\t%15s\t%15i\t%15ld\n", temp->username, temp->ipAddress, temp->count, (time(NULL)-temp->timeStamp+BLOCK_DURATION)/60);
 		
 		count += strlen(buffer);
 		
@@ -673,11 +680,11 @@ void blocklist(int connFd) {
 	temp = rootIgnore;
 	
 	// send blocklist
-	strcpy(buffer, "USERNAME\tIP-ADDRESS\tCOUNTER\n");
+	strcpy(buffer, "       USERNAME      IP-ADDRESS         COUNTER    BLOCKED(MIN)\n");
 	send(connFd, buffer, strlen(buffer), 0);
 	
 	while(temp != NULL) {
-		sprintf(buffer, "%s\t%s\t%i\n", temp->username, temp->ipAddress, temp->count);
+		sprintf(buffer, "%15s\t%15s\t%15i\t%15ld\n", temp->username, temp->ipAddress, temp->count, (time(NULL)-temp->timeStamp+BLOCK_DURATION)/60);
 		
 		send(connFd, buffer, strlen(buffer), 0);
 		
