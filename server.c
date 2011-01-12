@@ -456,8 +456,14 @@ int verify_user(char *user, char *pwd)
 	}
 }
 
+/*
+ * Add user to block list with ipAddress. 
+ * Starts with Counter 1 and current timestamp.
+ */
 void addIgnoreEntry(char *username, char *ipAddress) {
 	ignoreList *temp = rootIgnore;
+	
+	// search for user, and ipAddress
 	while(temp != NULL) {
 		if (strcmp(temp->username, username) == 0) {
 			if(strcmp(temp->ipAddress, ipAddress) == 0) {
@@ -469,6 +475,7 @@ void addIgnoreEntry(char *username, char *ipAddress) {
 
 	ignoreList *entry = NULL;
 
+	// if not found, add new entry
 	if(temp == NULL) {
 		entry = (ignoreList*)malloc(sizeof(ignoreList));
 		strcpy(entry->username, username);
@@ -478,18 +485,26 @@ void addIgnoreEntry(char *username, char *ipAddress) {
 		entry->next = rootIgnore;
 		entry->count = 1;
 		rootIgnore = entry;
-	} else {
+	}
+	// when found, increase counter, and renew timestamp
+	else {
 		temp->count++;
 		temp->timeStamp = time(NULL);
 	}
 }
 
+/*
+ * Check all block entries for expired timestamp.
+ * Remove entry of expired timestamp.
+ */
 void cleanIgnoreList() {
 	ignoreList *temp = rootIgnore;
 	ignoreList *next = NULL;
 	while(temp != NULL) {
 		next = temp->next;
+		// check if block duration is passed
 		if (time(NULL) - temp->timeStamp > BLOCK_DURATION){
+			// delete entry
 			if(temp->prev != NULL) {
 				temp->prev->next = temp->next;
 			} else {
@@ -504,6 +519,11 @@ void cleanIgnoreList() {
 	}
 }
 
+/*
+ * Check if user is in the block list.
+ * When found, check if counter exeeded fail-login limit,
+ * else delete entry.
+ */
 int isBlockade(char *username, char *ipAddress) {
 	ignoreList *temp = rootIgnore;
 	while(temp != NULL) {
@@ -512,6 +532,7 @@ int isBlockade(char *username, char *ipAddress) {
 				if(temp->count >= BLOCK_COUNT) {
 					return 1;
 				} else {
+					// delete entry
 					if(temp->prev != NULL) {
 						temp->prev->next = temp->next;
 					} else {
