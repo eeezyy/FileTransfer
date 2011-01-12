@@ -60,6 +60,7 @@ ignoreList *rootIgnore = NULL;
 void *session(void *arg);
 void list(char* dir, int connFd);
 void sendFile(char*, int);
+void getFile(char* fn, int connFd);
 void blocklist(int connFd);
 int verify_user(char *bind_user, char *bind_pw);
 void addIgnoreEntry(char *username, char *ipAddress);
@@ -217,6 +218,17 @@ void *session(void *arg)
 				// send file
 				sendFile(token, connFd);
 			}
+			else if(strncmp(receiveBuffer, "send", 4) == 0) {
+				// parse filename
+				char *token;
+				token = strtok(receiveBuffer, " ");
+				token = strtok(NULL, "\n");
+				if(token[strlen(token)-1]==13) {
+					token[strlen(token)-1]='\0';
+				}
+				// recv file
+				getFile(token, connFd);
+			}
 			else if(strncmp(receiveBuffer, "blocklist", 9) == 0) {
 				blocklist(connFd);
 			}
@@ -250,6 +262,7 @@ void *session(void *arg)
 void list(char *directory, int connFd)
 {
 	struct dirent* dirzeiger = NULL;
+	struct stat attribut;
 	char buffer[BUF] = "";
 	DIR *dir;
 
@@ -264,9 +277,11 @@ void list(char *directory, int connFd)
 		if(isDir == NULL)
 		{
 			// if file, increment size of filename
-			strcpy(buffer, "");
-			strcpy(buffer, dirzeiger->d_name);
-			strcat(buffer, "\n");
+			if(stat(dirzeiger->d_name, &attribut) == -1) {
+				sprintf(buffer, "%s\n", dirzeiger->d_name);
+			} else {
+				sprintf(buffer, "%s\t%ld B\n", dirzeiger->d_name, attribut.st_size);
+			}
 			count += strlen(buffer);
 		} else {
 			// if was dir, close dir
@@ -290,9 +305,11 @@ void list(char *directory, int connFd)
 		if (isDir == NULL)
 		{
 			char bufferList[BUF];
-			strcpy(bufferList, "");
-			strcpy(bufferList, dirzeiger->d_name);
-			strcat(bufferList, "\n");
+			if(stat(dirzeiger->d_name, &attribut) == -1) {
+				sprintf(bufferList, "%s\n", dirzeiger->d_name);
+			} else {
+				sprintf(bufferList, "%s\t%ld B\n", dirzeiger->d_name, attribut.st_size);
+			}
 			// send filename
 			send(connFd, bufferList, strlen(bufferList), 0);
 		} else {
@@ -304,6 +321,9 @@ void list(char *directory, int connFd)
 	fflush(stdout);
 }
 
+/*
+ * Sends size of file, and file to client.
+ */
 void sendFile(char* f, int connFd)
 {
 	char filename[1024] = "";
@@ -370,6 +390,66 @@ void sendFile(char* f, int connFd)
 			printf("can't open file\n");
 		}
 	}
+}
+
+/*
+ * Loads file from client to server.
+ */
+void getFile(char* fn, int connFd)
+{
+	char receiveBuffer[BUF];
+	int size;
+	// send confirmation (package)
+	send(connFd, "0", 1, 0);
+	
+	// recv size
+	size = recv(connFd, receiveBuffer, BUF-1, 0);
+	if(size > 0) {
+		receiveBuffer[size] = '\0';
+	}
+	
+	long packages;
+	// convert string to long
+	packages = strtol(receiveBuffer, NULL, 10);
+	if (packages == -1) {
+		printf("File not found!\n");
+		return;
+	}
+	
+	// confirmation, separate package from file
+	send(connFd, receiveBuffer, 1, 0);
+	
+	// get File
+	int leftBytes;
+	FILE *file = NULL;
+	
+	// save file in current directory where client was started
+	char dirfile[1024] = "./";
+	strcat(dirfile, fn);
+	
+	size = 0;
+	
+	// open file in write-binary mode
+	file = fopen(dirfile, "wb");
+	
+	// until file is full transmitted
+	for(leftBytes = packages; leftBytes > 0; leftBytes -= size) {
+		char tempBuffer[BUF] = "";
+		// recv part of file an bytes
+		size = recv(connFd, tempBuffer,BUF-1, 0);
+		if (size > 0) {
+			// write bytes in file
+			fwrite(tempBuffer, 1, size, file);
+		} else if (size == 0) {
+			printf("connect to socket failed\n");
+			break;
+		} else if (size == -1) {
+			printf("error in socket\n");
+			break;
+		}
+	}
+	printf("\n");
+	fclose(file);
 }
 
 /*

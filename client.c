@@ -15,6 +15,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <errno.h> 
+#include <sys/stat.h>
 
 #define BUF 2048
 
@@ -22,7 +23,8 @@
 #define QUIT 0
 #define LIST 1
 #define GET 2
-#define BLOCKLIST 3
+#define SEND 3
+#define BLOCKLIST 4
 
 int main(int argc, char **argv) {
 
@@ -115,6 +117,23 @@ int main(int argc, char **argv) {
 					continue;
 				filename = strtok(temp, " \n\r");
 				// if nothing was after 'get' aks again for command
+				if(filename == NULL) {
+					status = -1;
+					continue;
+				}
+				strcpy(fn, filename);
+			} else if(strncmp(buffer, "send", 4) == 0) {
+				status = SEND;
+				
+				// parse filename
+				char temp[BUF] = "";
+				if(strlen(buffer)-4 > 0)
+					// remove 'send'
+					strncpy(temp, (buffer+4), strlen(buffer)-4);
+				else
+					continue;
+				filename = strtok(temp, " \n\r");
+				// if nothing was after 'send' aks again for command
 				if(filename == NULL) {
 					status = -1;
 					continue;
@@ -252,6 +271,84 @@ int main(int argc, char **argv) {
 				}
 				printf("\n");
 				fclose(file);
+			}
+		// SEND
+		} else if (status == SEND) {
+			int leftBytes;
+			char sendBuffer[BUF];
+			char receiveBuffer[BUF];
+			FILE *file = NULL;
+			struct stat attribut;
+			unsigned long sizeOfFile = 0;
+			
+			// save file in current directory where client was started
+			char dirfile[1024] = "./";
+			strcat(dirfile, fn);
+			
+			// get file attributes
+			if(stat(dirfile, &attribut) == -1)
+			{
+				// send -1 as error
+				sprintf(sendBuffer, "%ld", (long)-1);
+				send(sockFd, sendBuffer, strlen(sendBuffer), 0);
+				printf("File not found!\n");
+			}
+			else {
+				// get size of file
+				sizeOfFile = attribut.st_size;
+				sprintf(sendBuffer, "%ld", sizeOfFile);
+				
+				// send size of file
+				send(sockFd, sendBuffer, strlen(sendBuffer), 0);
+				
+				// recv confirmation to send file
+				size = recv(sockFd, receiveBuffer, 1, 0);
+				
+				// open file in read-binary mode
+				file = fopen(dirfile, "rb");
+				if (file != NULL) {
+					// size of part of file to send
+					int newBUF = BUF-1;
+					int size;
+
+					// progress status
+					int progress = 0;
+					int percent = 0;
+					int diff = 0;
+					
+					// send file parts until whole file is sent
+					for(leftBytes = sizeOfFile; leftBytes > 0; leftBytes -= (BUF-1)) {
+						char tempBuffer[BUF];
+						// set new buffer size for the last part of the file
+						if(leftBytes < (BUF-1)) {
+							newBUF = leftBytes % (BUF-1);
+						}
+						
+						// read bytes of file
+						size = fread(tempBuffer, newBUF, 1, file);
+						// send bytes of file
+						send(sockFd, tempBuffer, newBUF, 0);
+						
+						// Progress bar
+						percent = (double)(sizeOfFile-leftBytes+newBUF)/(double)sizeOfFile*20;
+						diff = percent-progress;
+						if(diff >= 0) {
+							int i;
+							for(i = 0; i < diff; i++) {
+								printf("#");
+								fflush(stdout);
+								progress++;
+							}
+							if(progress == 20) {
+								printf("!\n");
+							}
+						}
+					}
+					printf("\n");
+					fclose(file);
+				} else {
+					printf("can't open file\n");
+				}
 			}
 		} else if(status == BLOCKLIST) {
 			// send confirmation
