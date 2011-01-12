@@ -664,7 +664,7 @@ void blocklist(int connFd) {
 	count += strlen(buffer);
 	
 	while(temp != NULL) {
-		sprintf(buffer, "%15s\t%15s\t%15i\t%15ld\n", temp->username, temp->ipAddress, temp->count, (time(NULL)-temp->timeStamp+BLOCK_DURATION)/60);
+		sprintf(buffer, "%15s\t%15s\t%15i\t%15ld\n", temp->username, temp->ipAddress, temp->count, (temp->timeStamp-time(NULL)+BLOCK_DURATION)/60);
 		
 		count += strlen(buffer);
 		
@@ -684,7 +684,7 @@ void blocklist(int connFd) {
 	send(connFd, buffer, strlen(buffer), 0);
 	
 	while(temp != NULL) {
-		sprintf(buffer, "%15s\t%15s\t%15i\t%15ld\n", temp->username, temp->ipAddress, temp->count, (time(NULL)-temp->timeStamp+BLOCK_DURATION)/60);
+		sprintf(buffer, "%15s\t%15s\t%15i\t%15ld\n", temp->username, temp->ipAddress, temp->count, (temp->timeStamp-time(NULL)+BLOCK_DURATION)/60);
 		
 		send(connFd, buffer, strlen(buffer), 0);
 		
