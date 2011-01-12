@@ -1,10 +1,11 @@
 /*
- * Authoren: Janosevic Goran, Kumbeiz Alexander
- * 
- *
+ * FTP Client
+ * Authors: Janosevic Goran, Kumbeiz Alexander
+ * System: Linux Debian x86
+ * Date: 2011-01-11
+ * Usage: client IP-ADDRESS PORT
  */
 
-/* myclient.c */
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -16,8 +17,6 @@
 #include <errno.h> 
 
 #define BUF 2048
-ssize_t readline (int fd, void *vptr, size_t maxlen);
-static ssize_t my_read (int fd, char *ptr);
 
 int main(int argc, char **argv) {
 
@@ -29,7 +28,7 @@ int main(int argc, char **argv) {
 	char *filename = NULL;
 	char fn[1024];
 
-	if( argc < 2 ) {
+	if( argc < 3 ) {
 		 fprintf(stderr, "Usage: %s IP-Adresse Port-Nummer\n", argv[0]);
 		 exit(EXIT_FAILURE);
 	}
@@ -96,104 +95,140 @@ int main(int argc, char **argv) {
 				status = 1;
 			} else if(strncmp(buffer, "get", 3) == 0) {
 				status = 2;
+				
+				// parse filename
 				char temp[BUF] = "";
-				strcpy(temp, buffer);
-				filename = strtok(temp, " ");
-				filename = strtok(NULL, "\n");
-				if(filename[strlen(filename)-1]==13) 
-					filename[strlen(filename)-1]='\0';
+				if(strlen(buffer)-3 > 0)
+					// remove 'get'
+					strncpy(temp, (buffer+3), strlen(buffer)-3);
+				else
+					continue;
+				filename = strtok(temp, " \n\r");
+				// if nothing was after 'get' aks command again
+				if(filename == NULL) {
+					status = -1;
+					continue;
+				}
 				strcpy(fn, filename);
 			} else if(strncmp(buffer, "quit", 4) == 0) {
+				// quit client and close connection
 				status = 0;
 			} else {
 				status = -1;
 			}
 		} while(status == -1);
-		//printf("send command\n");
+		
+		// send command
 		send(sockFd, buffer, strlen(buffer), 0);
-		//printf("recv packages\n");
+		
+		// recv packagesize
 		char bufferPackages[BUF];
 		size=recv(sockFd,bufferPackages,BUF-1, 0);
 		if(size > 0) {
 			bufferPackages[size] = '\0';
 		}
+		
 		long packages;
+		// convert str to long
 		packages = strtol(bufferPackages, NULL, 10);
-		//printf("packages %s,%ld\n", bufferPackages, packages);
 		if (packages == -1) {
 			if (status == 2) {
 				printf("File not found!\n");
 			}
 			continue;
 		}
+		
 		// list
 		if (status == 1) {
+			// send confirm message of packages
+			// separates packages from filelist
+			send(sockFd,buffer, 1, 0);
+			size = 0;
 			int i;
-			char bufferList[BUF] = "";
-			for (i=0; i < packages; i++) {
-				//printf("recv list\n");
-				//strcpy(bufferList, "");
-				size=readline(sockFd, bufferList, BUF-1);
+			// recv until whole list was received
+			for (i=0; i < packages; i+=size) {
+				// recv filenames
+				size=recv(sockFd, buffer, BUF-1, 0);
 				if((size) > 0) {
-					//buffer[size]= '\0';
-					printf("%s",bufferList);
+					// print file list
+					buffer[size]= '\0';
+					printf("%s",buffer);
 					fflush(stdout);
-					//continue;
 				} else if (size == 0) {
 					printf("connect to socket failed\n");
 					break;
 				} else if (size == -1) {
 					printf("error in socket\n");
-					break;
+					continue;
 				}
 			}
 		}
 		// get
 		else if (status == 2) {
 			int isConfirmed = -1;
-			//size=recv(sockFd, buffer, BUF-1, 0);
-			//printf("%s ", buffer);
 			printf("Size of selected File is %ld bytes\nDo you want to download the file? (y/n)",packages );
+			
+			// confirm download
 			do {
 				fgets(buffer, BUF-1, stdin);
 				if (strncmp(buffer, "y", 1) == 0) {
-					//printf("send confirm download y\n");
+					// send confirm yes
 					strcpy(buffer, "y");
 					send(sockFd, buffer, strlen(buffer), 0);
 					isConfirmed = 1;
 				} else if (strncmp(buffer, "n", 1) == 0) {
-					//printf("send confirm download n\n");
+					// send confirm no
 					strcpy(buffer, "n");
 					send(sockFd, buffer, strlen(buffer), 0);
 					isConfirmed = 0;
 				} else {
+					// try again
 					isConfirmed = -1;
 					printf("Invalid input. (y/n) ");
 				}
 			} while(isConfirmed == -1);
+			
+			// if client sends y
 			if(isConfirmed) {
 				// get File
 				int leftBytes;
 				FILE *file = NULL;
+				
+				// save file in current directory where client was started
 				char dirfile[1024] = "./";
 				strcat(dirfile, fn);
-				file = fopen(dirfile, "wb");
+				
+				// progress status
 				int progress = 0;
 				int percent = 0;
-				int j = 1;
-				int newBUF = BUF-1;
+				int diff = 0;
 				size = 0;
+				
+				// open file in write-binary mode
+				file = fopen(dirfile, "wb");
+				
+				// until file is full transmitted
 				for(leftBytes = packages; leftBytes > 0; leftBytes -= size) {
 					char tempBuffer[BUF] = "";
-					/*if(leftBytes < (BUF-1)) {
-						newBUF = leftBytes % (BUF-1);
-					}*/
-					percent = (double)(packages-leftBytes+newBUF)/(double)packages*20;
-					int temp = percent-progress;
-					if(temp >= 0) {
-						//printf("percent: %i progress: %i diff: %i\n", percent, progress, temp);
+					// recv part of file an bytes
+					size = recv(sockFd, tempBuffer,BUF-1, 0);
+					if (size > 0) {
+						// write bytes in file
+						fwrite(tempBuffer, 1, size, file);
+					} else if (size == 0) {
+						printf("connect to socket failed\n");
+						break;
+					} else if (size == -1) {
+						printf("error in socket\n");
+						break;
+					}
+					
+					// Progress bar
+					percent = (double)(packages-leftBytes+size)/(double)packages*20;
+					diff = percent-progress;
+					if(diff >= 0) {
 						int i;
-						for(i = 0; i < temp; i++) {
+						for(i = 0; i < diff; i++) {
 							printf("#");
 							fflush(stdout);
 							progress++;
@@ -202,20 +237,6 @@ int main(int argc, char **argv) {
 							printf("!\n");
 						}
 					}
-					//printf("recv file\n");
-					size = recv(sockFd, tempBuffer,BUF-1, 0);
-					if (size > 0) {
-						//printf("%i.recvfile\n", j);
-						//tempBuffer[size] = '\0';
-					} else if (size == 0) {
-						printf("connect to socket failed\n");
-						break;
-					} else if (size == -1) {
-						printf("error in socket\n");
-						break;
-					}
-					fwrite(tempBuffer, 1, size, file);
-					j++;
 				}
 				fclose(file);
 			}
@@ -224,48 +245,4 @@ int main(int argc, char **argv) {
 
 	close(sockFd);
 	return EXIT_SUCCESS;
-}
-
-
-static ssize_t
-my_read (int fd, char *ptr)
-{
-	static int read_cnt = 0 ;
-	static char *read_ptr ;
-	static char read_buf[BUF] ;
-	if (read_cnt <= 0) {
-		again:
-		if ( (read_cnt = read(fd,read_buf,sizeof(read_buf))) < 0) {
-			if (errno == EINTR)
-				goto again ;
-			return (-1) ;
-		} else if (read_cnt == 0)
-			return (0) ;
-		read_ptr = read_buf ;
-	} ;
-	read_cnt-- ;
-	*ptr = *read_ptr++ ;
-	return (1) ;
-}
-
-ssize_t readline (int fd, void *vptr, size_t maxlen)
-{
-	ssize_t n, rc ;
-	char c, *ptr ;
-	ptr = vptr ;
-	for (n = 1 ; n < maxlen ; n++) {
-		if ( (rc = my_read(fd,&c)) == 1 ) {
-			*ptr++ = c ;
-			if (c == '\n')
-				break ; // newline is stored
-		} else if (rc == 0) {
-			if (n == 1)
-				return (0) ; // EOF, no data read
-			else
-				break ; // EOF, some data was read
-		} else
-			return (-1) ; // error, errno set by read() in my_read()
-	} ;
-	*ptr = 0 ; // null terminate
-	return (n) ;
 }

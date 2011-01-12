@@ -1,4 +1,11 @@
-/* myserver.c */
+/*
+ * FTP Server
+ * Authors: Janosevic Goran, Kumbeiz Alexander
+ * System: Linux Debian x86
+ * Date: 2011-01-11
+ * Usage: server PORT [DIRECTORY]
+ */
+
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -15,31 +22,16 @@
 #include <time.h>
 
 #define BUF 2048
-#define MAXAMOUNT 20
+// LDAP constants
 #define LDAP_HOST "ldap.technikum-wien.at"
 #define SEARCHBASE "dc=technikum-wien,dc=at"
 #define SCOPE LDAP_SCOPE_SUBTREE
 #define LDAP_PORT 389
+// user block restriction
 #define BLOCK_DURATION 60*30
 #define BLOCK_COUNT 3
 
-//++++++++++++++++++++
-// globale Variablen
-//++++++++++++++++++++
-char dirname[1024];
-
-//++++++++++++++++++++
-// globale Funktionen
-//++++++++++++++++++++
-void *session(void *arg);
-void list(char* dir, int connFd);
-void sendFile(char*, int);
-int verify_user(char *bind_user, char *bind_pw);
-void addIgnoreEntry(char *username, char *ipAddress);
-int isBlockade(char *username, char *ipAddress);
-void cleanIgnoreList();
-//ssize_t writen (int fd, const void *vptr, size_t n);
-
+// user blocklist entry type
 typedef struct ignoreList {
 	struct ignoreList *prev;
 	char ipAddress[16];
@@ -49,76 +41,99 @@ typedef struct ignoreList {
 	struct ignoreList *next;
 } ignoreList;
 
+// Thread data type
 typedef struct thrdData {
 	char ipAddress[16];
 	int socket;
 } thrdData;
 
+//++++++++++++++++++++
+// global vars
+//++++++++++++++++++++
+char dirname[1024];
+// root of linked blocklist
 ignoreList *rootIgnore = NULL;
+
+//++++++++++++++++++++
+// global functions
+//++++++++++++++++++++
+void *session(void *arg);
+void list(char* dir, int connFd);
+void sendFile(char*, int);
+int verify_user(char *bind_user, char *bind_pw);
+void addIgnoreEntry(char *username, char *ipAddress);
+int isBlockade(char *username, char *ipAddress);
+void cleanIgnoreList();
 
 int main(int argc, char **argv) {
 
-int sockFd, connFd;
-socklen_t addrlen;
-struct sockaddr_in address, cliaddress;
-long port;
+	// connection vars
+	int sockFd, connFd;
+	socklen_t addrlen;
+	struct sockaddr_in address, cliaddress;
+	long port;
 
-struct thrdData* data;
-pthread_t socketThread[MAXAMOUNT];
-int index = 0;
+	// thread vars
+	struct thrdData* data;
+	pthread_t socketThread;
 
-if(argc < 2) {
-	fprintf(stderr, "USAGE: %s PORT Directory\n", argv[0]);
-	return EXIT_FAILURE;
-}
-
-if(argc == 3) {
-	strcpy(dirname, argv[2]);
-} else {
-	getcwd(dirname, sizeof(dirname));
-}
-
-port = strtol(argv[1], NULL, 10);
-sockFd = socket(AF_INET, SOCK_STREAM, 0);
-
-memset(&address,0,sizeof(address));
-address.sin_family = AF_INET;
-address.sin_addr.s_addr = INADDR_ANY;
-address.sin_port = htons(port);
-
-if(bind( sockFd,(struct sockaddr *) &address, sizeof(address)) != 0) {
- perror("bind error");
- return EXIT_FAILURE;
-}
-
-listen(sockFd, 5);
-addrlen = sizeof(struct sockaddr_in);
-
-while(1){
-	printf("Waiting for connections...\n");
-	connFd = accept( sockFd,(struct sockaddr *) &cliaddress, &addrlen );
-	if(connFd > 0) {
-		printf("Client connected from %s:%d...\n", inet_ntoa(cliaddress.sin_addr),ntohs(cliaddress.sin_port));
- /*
-	strcpy(buffer,"Welcome to myserver, Please enter your command:\n");
-	send(connFd, buffer, strlen(buffer),0);
-*/
-		data =(struct thrdData*)malloc(sizeof(struct thrdData));
-		strcpy(data->ipAddress,inet_ntoa(cliaddress.sin_addr));
-//		data->clientPort = ntohs(cliaddress.sin_port);
-		data->socket = connFd;
-		pthread_create(&socketThread[index],NULL,session,(void*)data);
-		//index++;
- }
- else {
-		printf("Fehler bei accept \n");
+	if(argc < 2) {
+		fprintf(stderr, "USAGE: %s PORT Directory\n", argv[0]);
 		return EXIT_FAILURE;
+	}
+
+	// Choose directory
+	if(argc == 3) {
+		strcpy(dirname, argv[2]);
+		if(opendir(dirname) == NULL) {
+			fprintf(stderr, "%s: %s is not a directory!\n", argv[0], argv[2]);
+			return EXIT_FAILURE;
 		}
-}
+	} else {
+		// current dir
+		getcwd(dirname, sizeof(dirname));
+	}
+
+	port = strtol(argv[1], NULL, 10);
+	sockFd = socket(AF_INET, SOCK_STREAM, 0);
+
+	memset(&address,0,sizeof(address));
+	address.sin_family = AF_INET;
+	address.sin_addr.s_addr = INADDR_ANY;
+	address.sin_port = htons(port);
+
+	if(bind( sockFd,(struct sockaddr *) &address, sizeof(address)) != 0) {
+		perror("bind error");
+		return EXIT_FAILURE;
+	}
+
+	listen(sockFd, 5);
+	addrlen = sizeof(struct sockaddr_in);
+
+	// wait for clients to connect
+	while(1) {
+		printf("Waiting for connections...\n");
+		connFd = accept( sockFd,(struct sockaddr *) &cliaddress, &addrlen );
+		if(connFd > 0) {
+			printf("Client connected from %s:%d...\n", inet_ntoa(cliaddress.sin_addr),ntohs(cliaddress.sin_port));
+			data =(struct thrdData*)malloc(sizeof(struct thrdData));
+			strcpy(data->ipAddress,inet_ntoa(cliaddress.sin_addr));
+			data->socket = connFd;
+			// create thread for accepted client with session function
+			pthread_create(&socketThread,NULL,session,(void*)data);
+		 }
+		 else {
+			printf("Error with accept \n");
+			return EXIT_FAILURE;
+		}
+	}
 	close(sockFd);
 	return EXIT_SUCCESS;
 }
 
+/*
+ * Thread and connection session
+ */
 void *session(void *arg)
 {
 	thrdData* init =(thrdData* )(arg);
@@ -129,72 +144,83 @@ void *session(void *arg)
 	char username[BUF];
 	char passwd[BUF];
 
-	//pthread_detach(pthread_self());
-	printf("Thread gestartet : %d\n", connFd);
-	strcpy(sendBuffer,"Welcome to myserver, Please enter your command:\n");
-	//printf("send welcome message\n");
+	printf("Running thread: %d\n", connFd);
+	
+	// send welcome message
+	strcpy(sendBuffer,"Welcome to FTP-Server!\n");
 	send(connFd, sendBuffer, strlen(sendBuffer),0);
 
 	// recv username
-	//printf("recv username\n");
 	size = recv(connFd, receiveBuffer, BUF-1, 0);
 	if (size > 0) {
 		receiveBuffer[size] = '\0';
 	}
 	strcpy(username, receiveBuffer);
+	
 	// recv passwd
-	//printf("recv password\n");
 	size = recv(connFd, receiveBuffer, BUF-1, 0);
 	if (size > 0) {
 		receiveBuffer[size] = '\0';
 	}
 	strcpy(passwd, receiveBuffer);
+	
+	// check user in ldap
 	if(verify_user(username, passwd) == 0) {
-		//printf("send loginmessage invalid\n");
+		// send login error message
 		strcpy(sendBuffer, "Username or password invalid\n");
 		send(connFd, sendBuffer, strlen(sendBuffer), 0);
 		addIgnoreEntry(username, init->ipAddress);
 		close(connFd);
 		return NULL;
 	}
+	
+	// check blocklist for expired timestamp
 	cleanIgnoreList();
+	
+	// check if user is blocked, otherwise remove entry if exists
 	if(isBlockade(username, init->ipAddress) == 1) {
-		//printf("send loginmessage blocked\n");
+		// send login block message
 		strcpy(sendBuffer, "User is blocked!\n");
 		send(connFd, sendBuffer, strlen(sendBuffer), 0);
 		close(connFd);
 		return NULL;
 	}
-	//printf("send loginmessage successful\n");
+	
+	// send login successful message
 	send(connFd, "Login successful!\n", BUF-1, 0);
 	strcpy(receiveBuffer, "");
+	
+	// wait for commands from client, runs while command not quit
 	while(strncmp(receiveBuffer, "quit", 4) != 0) {
-		//printf("recv command\n");
-		sleep(3);
+		// recv command
 		size = recv(connFd, receiveBuffer, BUF-1, 0);
 
 		if(size > 0) {
 			receiveBuffer[size] = '\0';
+			
 			printf("Message received: %s\n", receiveBuffer);
+			
 			if (strncmp(receiveBuffer, "list", 4) == 0) {
-				//strcpy(sendBuffer,"List wurde eingegeben\n");
-				//send(connFd, sendBuffer, strlen(sendBuffer),0);
+				// send list
 				list(dirname, connFd);
-				//dir = opendir(dirname);
-
 			}
 			else if (strncmp(receiveBuffer, "get", 3) == 0) {
+				// parse filename
 				char *token;
 				token = strtok(receiveBuffer, " ");
 				token = strtok(NULL, "\n");
-				if(token[strlen(token)-1]==13)
+				if(token[strlen(token)-1]==13) {
 					token[strlen(token)-1]='\0';
+				}
+				// send file
 				sendFile(token, connFd);
 			}
 			else if(strncmp(receiveBuffer, "quit", 4) == 0) {
+				// quit client and connection
 				printf("Client closed remote socket\n");
 				break;
 			} else {
+				// clear command buffer
 				strcpy(receiveBuffer, "");
 			}
 		}
@@ -212,6 +238,10 @@ void *session(void *arg)
 	return NULL;
 }
 
+/*
+ * sends sum of filename-sizes
+ * and the filenames
+ */
 void list(char *directory, int connFd)
 {
 	struct dirent* dirzeiger = NULL;
@@ -223,19 +253,23 @@ void list(char *directory, int connFd)
 	DIR *temp;
 	while((dirzeiger = readdir(dir))) {
 		temp = opendir(dirzeiger->d_name);
+		strcpy(buffer, "");
+		strcpy(buffer, dirzeiger->d_name);
+		strcat(buffer, "\n");
 		if(temp == NULL)
 		{
-			count++;
+			count += strlen(buffer);
 		} else {
 			closedir(temp);
 		}
 	}
 	sprintf(buffer, "%ld", count);
-	//printf("send packages\n");
+	printf("send packages %ld\n", count);
 	send(connFd, buffer, strlen(buffer), 0);
+	recv(connFd, buffer, BUF-1, 0);
 	closedir(dir);
 	dir = opendir(dirname);
-
+	int i = 0;
 	while((dirzeiger = readdir(dir))) {
 		temp = opendir(dirzeiger->d_name);
 		if (temp == NULL)
@@ -246,7 +280,9 @@ void list(char *directory, int connFd)
 			strcpy(bufferList, dirzeiger->d_name);
 			strcat(bufferList, "\n");
 			//printf("send list\n");
+			//printf("%i.size %i\n", i, strlen(bufferList));
 			send(connFd, bufferList, strlen(bufferList), 0);
+			i++;
 		} else {
 			closedir(temp);
 		}
@@ -336,7 +372,7 @@ int verify_user(char *user, char *bind_pw)
     LDAP *ld;			/* LDAP resource handle */
     LDAPMessage *result, *e;	/* LDAP result handle */
     char BIND_USER[1024] = "uid=if09b505,ou=People,dc=technikum-wien,dc=at";
-    char BIND_PW[1024] = "kumbeiz123456";
+    char BIND_PW[1024] = "123";
     char FILTER[1024] = "";
     char dn[1024] = "";
 
@@ -486,24 +522,3 @@ int isBlockade(char *username, char *ipAddress) {
 	}
 	return 0;
 }
-
-// write n bytes to a descriptor ...
-/*ssize_t writen (int fd, const void *vptr, size_t n)
-{
-	size_t nleft ;
-	ssize_t nwritten ;
-	const char *ptr ;
-	ptr = vptr ;
-	nleft = n ;
-	while (nleft > 0) {
-		if ( (nwritten = write(fd,ptr,nleft)) <= 0) {
-			if (errno == EINTR)
-				nwritten = 0 ; // and call write() again
-			else
-			return (-1) ;
-		}
-		nleft -= nwritten ;
-		ptr += nwritten ;
-	} ;
-	return (n) ;
-} ;*/
