@@ -18,6 +18,12 @@
 
 #define BUF 2048
 
+// State of commands
+#define QUIT 0
+#define LIST 1
+#define GET 2
+#define BLOCKLIST 3
+
 int main(int argc, char **argv) {
 
 	int sockFd;
@@ -82,12 +88,12 @@ int main(int argc, char **argv) {
 	int status = -1;
 
 	if(strcmp(buffer, "Username or password invalid\n") == 0) {
-		status = 0;
+		status = QUIT;
 	} else if(strcmp(buffer, "User is blocked!\n") == 0) {
-		status = 0;
+		status = QUIT;
 	}
 	
-	while(status != 0) {
+	while(status != QUIT) {
 		
 		do {
 			// get command
@@ -96,9 +102,9 @@ int main(int argc, char **argv) {
 			
 			// get command status
 			if(strncmp(buffer, "list", 4) == 0) {
-				status = 1;
+				status = LIST;
 			} else if(strncmp(buffer, "get", 3) == 0) {
-				status = 2;
+				status = GET;
 				
 				// parse filename
 				char temp[BUF] = "";
@@ -114,9 +120,11 @@ int main(int argc, char **argv) {
 					continue;
 				}
 				strcpy(fn, filename);
+			} else if(strncmp(buffer, "blocklist", 9) == 0) {
+				status = BLOCKLIST;
 			} else if(strncmp(buffer, "quit", 4) == 0) {
 				// quit client and close connection
-				status = 0;
+				status = QUIT;
 			} else {
 				status = -1;
 			}
@@ -136,14 +144,14 @@ int main(int argc, char **argv) {
 		// convert string to long
 		packages = strtol(bufferPackages, NULL, 10);
 		if (packages == -1) {
-			if (status == 2) {
+			if (status == GET) {
 				printf("File not found!\n");
 			}
 			continue;
 		}
 		
 		// list
-		if (status == 1) {
+		if (status == LIST) {
 			// send confirmation
 			send(sockFd,buffer, 1, 0);
 			size = 0;
@@ -165,9 +173,10 @@ int main(int argc, char **argv) {
 					continue;
 				}
 			}
+			printf("\n");
 		}
 		// get
-		else if (status == 2) {
+		else if (status == GET) {
 			int isConfirmed = -1;
 			printf("Size of selected File is %ld bytes\nDo you want to download the file? (y/n)",packages );
 			
@@ -241,8 +250,32 @@ int main(int argc, char **argv) {
 						}
 					}
 				}
+				printf("\n");
 				fclose(file);
 			}
+		} else if(status == BLOCKLIST) {
+			// send confirmation
+			send(sockFd,buffer, 1, 0);
+			size = 0;
+			int i;
+			// recv until whole list was received
+			for (i=0; i < packages; i+=size) {
+				// recv blocklist
+				size=recv(sockFd, buffer, BUF-1, 0);
+				if((size) > 0) {
+					// print blocklist
+					buffer[size]= '\0';
+					printf("%s",buffer);
+					fflush(stdout);
+				} else if (size == 0) {
+					printf("connect to socket failed\n");
+					break;
+				} else if (size == -1) {
+					printf("error in socket\n");
+					continue;
+				}
+			}
+			printf("\n");
 		}
 	}
 
