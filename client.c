@@ -68,17 +68,19 @@ int main(int argc, char **argv) {
 	char *pwd;
 	pwd=getpass("Password: ");
 	strcpy(buffer, pwd);
-	//printf("send password\n");
+	// send password
 	send(sockFd, buffer, strlen(buffer), 0);
-	//printf("recv loginmessage\n");
+
+	// recv login message
 	size = recv(sockFd, buffer, BUF-1, 0);
 	if(size > 0) {
 		buffer[size]= '\0';
 		printf("%s\n", buffer);
 	}
 
+	// status code of command
 	int status = -1;
-	
+
 	if(strcmp(buffer, "Username or password invalid\n") == 0) {
 		status = 0;
 	} else if(strcmp(buffer, "User is blocked!\n") == 0) {
@@ -88,9 +90,11 @@ int main(int argc, char **argv) {
 	while(status != 0) {
 		
 		do {
+			// get command
 			printf("Send command: ");
 			fgets(buffer, BUF-1, stdin);
 			
+			// get command status
 			if(strncmp(buffer, "list", 4) == 0) {
 				status = 1;
 			} else if(strncmp(buffer, "get", 3) == 0) {
@@ -104,7 +108,7 @@ int main(int argc, char **argv) {
 				else
 					continue;
 				filename = strtok(temp, " \n\r");
-				// if nothing was after 'get' aks command again
+				// if nothing was after 'get' aks again for command
 				if(filename == NULL) {
 					status = -1;
 					continue;
@@ -129,7 +133,7 @@ int main(int argc, char **argv) {
 		}
 		
 		long packages;
-		// convert str to long
+		// convert string to long
 		packages = strtol(bufferPackages, NULL, 10);
 		if (packages == -1) {
 			if (status == 2) {
@@ -140,8 +144,7 @@ int main(int argc, char **argv) {
 		
 		// list
 		if (status == 1) {
-			// send confirm message of packages
-			// separates packages from filelist
+			// send confirmation
 			send(sockFd,buffer, 1, 0);
 			size = 0;
 			int i;

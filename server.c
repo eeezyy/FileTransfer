@@ -94,6 +94,7 @@ int main(int argc, char **argv) {
 		getcwd(dirname, sizeof(dirname));
 	}
 
+	// prepare for connections
 	port = strtol(argv[1], NULL, 10);
 	sockFd = socket(AF_INET, SOCK_STREAM, 0);
 
@@ -248,43 +249,51 @@ void list(char *directory, int connFd)
 	char buffer[BUF] = "";
 	DIR *dir;
 
-	dir = opendir(dirname);
 	long count = 0;
-	DIR *temp;
+	DIR *isDir;
+	
+	// parse each element in current directory
+	dir = opendir(dirname);
 	while((dirzeiger = readdir(dir))) {
-		temp = opendir(dirzeiger->d_name);
-		strcpy(buffer, "");
-		strcpy(buffer, dirzeiger->d_name);
-		strcat(buffer, "\n");
-		if(temp == NULL)
+		// check if it is file or dir
+		isDir = opendir(dirzeiger->d_name);
+		if(isDir == NULL)
 		{
+			// if file, increment size of filename
+			strcpy(buffer, "");
+			strcpy(buffer, dirzeiger->d_name);
+			strcat(buffer, "\n");
 			count += strlen(buffer);
 		} else {
-			closedir(temp);
+			// if was dir, close dir
+			closedir(isDir);
 		}
 	}
-	sprintf(buffer, "%ld", count);
-	printf("send packages %ld\n", count);
-	send(connFd, buffer, strlen(buffer), 0);
-	recv(connFd, buffer, BUF-1, 0);
 	closedir(dir);
+	
+	// send sum of filename-sizes
+	sprintf(buffer, "%ld", count);
+	send(connFd, buffer, strlen(buffer), 0);
+	
+	// recv confirmation
+	recv(connFd, buffer, BUF-1, 0);
+
+	// open base dir to send each filename
 	dir = opendir(dirname);
-	int i = 0;
 	while((dirzeiger = readdir(dir))) {
-		temp = opendir(dirzeiger->d_name);
-		if (temp == NULL)
+		// only send filenames
+		isDir = opendir(dirzeiger->d_name);
+		if (isDir == NULL)
 		{
 			char bufferList[BUF];
-			//printf("%s\n", dirzeiger->d_name);
 			strcpy(bufferList, "");
 			strcpy(bufferList, dirzeiger->d_name);
 			strcat(bufferList, "\n");
-			//printf("send list\n");
-			//printf("%i.size %i\n", i, strlen(bufferList));
+			// send filename
 			send(connFd, bufferList, strlen(bufferList), 0);
-			i++;
 		} else {
-			closedir(temp);
+			// if it was a dir, close dir
+			closedir(isDir);
 		}
 	}
 	closedir(dir);
@@ -301,35 +310,29 @@ void sendFile(char* f, int connFd)
 	FILE *file;
 	int leftBytes;
 	int size;
-	//int iterations = 1;
-	//int i;
 
-	//parsing given filename => wildcards
-	/*for(i = 0; i < strlen(f); i++) {
-		if( f[i] == '*') {
-			//calling function which returns a matrix (array[#files][0])
-			printf("\nSchternsche g'funde!\n");
-			break;
-		}
-	}*/
-
+	// concatenate dirname and filename
 	strcat(filename, dirname);
 	strcat(filename, "/");
 	strcat(filename, f);
 
+	// get file attributes
 	if(stat(filename, &attribut) == -1)
 	{
+		// send -1 as error
 		sprintf(sendBuffer, "%ld", (long)-1);
-		printf("send packages stat error\n");
 		send(connFd, sendBuffer, strlen(sendBuffer), 0);
 	}
 	else
 	{
+		// get size of file
 		sizeOfFile = attribut.st_size;
 		sprintf(sendBuffer, "%ld", sizeOfFile);
-		printf("send packages %ld/%s\n", sizeOfFile, sendBuffer);
+		
+		// send size of file
 		send(connFd, sendBuffer, strlen(sendBuffer), 0);
-		//printf("recv confirm download\n");
+		
+		// recv confirmation to send file
 		size = recv(connFd, receiveBuffer, BUF-1, 0);
 		if (size > 0) {
 			receiveBuffer[size] = '\0';
@@ -337,116 +340,120 @@ void sendFile(char* f, int connFd)
 		if(strncmp(receiveBuffer,"y", 1) != 0) {
 			return;
 		}
+		
+		// open file in read-binary mode
 		file = fopen(filename, "rb");
-		printf("try open file\n");
 		if (file != NULL) {
-			printf("file is open\n");
+			// size of part of file to send
 			int newBUF = BUF-1;
-			int i = 1;
 			int size;
+			
+			// send file parts until whole file is sent
 			for(leftBytes = sizeOfFile; leftBytes > 0; leftBytes -= (BUF-1)) {
 				char tempBuffer[BUF];
+				// set new buffer size for the last part of the file
 				if(leftBytes < (BUF-1)) {
 					newBUF = leftBytes % (BUF-1);
 				}
+				
+				// read bytes of file
 				size = fread(tempBuffer, newBUF, 1, file);
-				//printf("send file\n");
-				//if(size > 0) 
-				{
-					send(connFd, tempBuffer, newBUF, 0);
-					//printf("%i.sendfile\n", i);
-				}
-				//printf("newBuf %i leftByte %i size %ld\n", newBUF, leftBytes, sizeOfFile);
-				i++;
+				// send bytes of file
+				send(connFd, tempBuffer, newBUF, 0);
 			}
 			fclose(file);
-			printf("close file\n");
 		} else {
 			printf("can't open file\n");
 		}
 	}
 }
 
-int verify_user(char *user, char *bind_pw)
+/*
+ * Verify user in LDAP-System. Three-Tier-Check.
+ */
+int verify_user(char *user, char *pwd)
 {
-    LDAP *ld;			/* LDAP resource handle */
-    LDAPMessage *result, *e;	/* LDAP result handle */
-    char BIND_USER[1024] = "uid=if09b505,ou=People,dc=technikum-wien,dc=at";
-    char BIND_PW[1024] = "123";
-    char FILTER[1024] = "";
-    char dn[1024] = "";
+	// LDAP resource handle
+	LDAP *ld;
+	LDAPMessage *result, *e;	/* LDAP result handle */
+	// Initial bind (Step 1). Set NULL for anonymous bind.
+	char bind_user[1024] = "uid=if09b505,ou=People,dc=technikum-wien,dc=at";
+	char bind_pwd[1024] = "123";
 
-    int rc=0;
+	// Filter var to search (Step 2).
+	char filter[1024] = "";
+	char dn[1024] = "";
+	// attribute array for search
+	char *attribs[3];
 
-    char *attribs[3];		/* attribute array for search */
+	// return value of bind and search
+	int rc=0;
 
-    attribs[0]=strdup("uid");		/* return uid and cn of entries */
-    attribs[1]=strdup("cn");
-    attribs[2]=NULL;		/* array must be NULL terminated */
+	// return uid and cn of entries
+	attribs[0]=strdup("uid");
+	attribs[1]=strdup("cn");
+	// array must be NULL terminated
+	attribs[2]=NULL;
 
+	// setup LDAP connection
+	if ((ld=ldap_init(LDAP_HOST, LDAP_PORT)) == NULL)    {
+		perror("ldap_init failed");
+		return 0;
+	}
 
-   /* setup LDAP connection */
-    if ((ld=ldap_init(LDAP_HOST, LDAP_PORT)) == NULL)    {
-        perror("ldap_init failed");
-        return 0;
-    }
+	// STEP 1: anonymous bind
+	rc = ldap_simple_bind_s(ld,bind_user,bind_pwd);
 
-   //printf("connected to LDAP server %s on port %d\n",LDAP_HOST,LDAP_PORT);
+	if (rc != LDAP_SUCCESS)    {
+	  fprintf(stderr,"LDAP error: %s\n",ldap_err2string(rc));
+	  return 0;
+	}
 
-   /*STEP 1: anonymous bind */
-   rc = ldap_simple_bind_s(ld,BIND_USER,BIND_PW);
-
-   if (rc != LDAP_SUCCESS)    {
-      fprintf(stderr,"LDAP error: %s\n",ldap_err2string(rc));
-      return 0;
-   }
-/* else {
-      printf("bind with (hard)coded user succeed\n");
-   }
-*/
-   /*STEP 2: perform ldap search to given username */
-    strcpy(FILTER, "(uid=");
-    char *token;
+	// STEP 2: perform ldap search to given username
+	strcpy(filter, "(uid=");
+	char *token;
 	token = strtok(user, "\n");
 	if(token[strlen(token)-1]==13)
 		token[strlen(token)-1]='\0';
-    strcat(FILTER, token);
-    strcat(FILTER, ")");
+	strcat(filter, token);
+	strcat(filter, ")");
 
-   rc = ldap_search_s(ld, SEARCHBASE, SCOPE, FILTER, attribs, 0, &result);
+	rc = ldap_search_s(ld, SEARCHBASE, SCOPE, filter, attribs, 0, &result);
 
-   if (rc != LDAP_SUCCESS) {
-      fprintf(stderr,"LDAP search error: %s\n",ldap_err2string(rc));
-      return 0;
-   }
-   else {
-      //printf("user gefunden\n");
-   }
+	if (rc != LDAP_SUCCESS) {
+		fprintf(stderr,"LDAP search error: %s\n",ldap_err2string(rc));
+		return 0;
+	}
 
-   //printf("Total results: %d\n", ldap_count_entries(ld, result));
+	for (e = ldap_first_entry(ld, result); e != NULL; e = ldap_next_entry(ld,e))
+	{
+		strcpy(dn, ldap_get_dn(ld,e));
+		break;
+	}
+	// unbind anonymous user or main user
+	ldap_unbind(ld);
+	
+	// setup LDAP connection
+	if ((ld=ldap_init(LDAP_HOST, LDAP_PORT)) == NULL)    {
+		perror("ldap_init failed");
+		return 0;
+	}
+	
+	// STEP 3: bind user to check if pwd is correct
+	rc = ldap_simple_bind_s(ld,dn,pwd);
 
-    for (e = ldap_first_entry(ld, result); e != NULL; e = ldap_next_entry(ld,e))
-    {
-        //printf("found DN: %s\n", ldap_get_dn(ld,e));
-        strcpy(dn, ldap_get_dn(ld,e));
-        break;
-   }
-    //printf("saved dn: %s", dn);
-   /* STEP 3: bind with user input (PWD)*/
-   rc = ldap_simple_bind_s(ld,dn,bind_pw);
-
-   if (rc != LDAP_SUCCESS)
-   {
+	if (rc != LDAP_SUCCESS)
+	{
 		perror("ldap_bind failed");
 		ldap_unbind(ld);
 		return 0;
-   }
-   else
-   {
+	}
+	else
+	{
 		printf("login!\n");
 		ldap_unbind(ld);
 		return 1;
-   }
+	}
 }
 
 void addIgnoreEntry(char *username, char *ipAddress) {
