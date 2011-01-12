@@ -572,6 +572,9 @@ void addIgnoreEntry(char *username, char *ipAddress) {
 		entry->prev = NULL;
 		entry->next = rootIgnore;
 		entry->count = 1;
+		if(rootIgnore != NULL) {
+			rootIgnore->prev = entry;
+		}
 		rootIgnore = entry;
 	}
 	// when found, increase counter, and renew timestamp
@@ -601,6 +604,7 @@ void cleanIgnoreList() {
 			if(temp->next != NULL) {
 				temp->next->prev = temp->prev;
 			}
+			printf("cleaned block entry\n");
 			free(temp);
 		}
 		temp = next;
@@ -629,6 +633,7 @@ int isBlockade(char *username, char *ipAddress) {
 					if(temp->next != NULL) {
 						temp->next->prev = temp->prev;
 					}
+					printf("removed from blocklist %s\n", temp->username);
 					free(temp);
 					return 0;
 				}
